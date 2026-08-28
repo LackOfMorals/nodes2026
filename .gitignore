@@ -9,11 +9,17 @@ router/release/
 router/config.json
 # Rendered from router/graph.yaml.template — contains the Linear API key
 router/graph.yaml
+# Local test configs — also contain the Linear API key
+router/graph-test-collision.yaml
+router/graph-test2.yaml
 router/plugins/slack/bin/
 router/tools/
 
 # Local neo4j subgraph service binary (make neo4j-api / go build)
 neo4j-api/bin/
+
+# Node dependencies (regenerable — see neo4jGraphQLSrv/package.json)
+neo4jGraphQLSrv/node_modules/
 
 # macOS
 .DS_Store

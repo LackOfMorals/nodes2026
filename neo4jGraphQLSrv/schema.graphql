@@ -1,0 +1,66 @@
+type Channel @node {
+	hostsThreadThreads: [Thread!]! @relationship(type: "HOSTS_THREAD", direction: OUT)
+	id: String!
+	name: String!
+	purpose: String!
+}
+
+type DiscussedInProperties @relationshipProperties {
+	confidence: Float!
+	createdAt: DateTime!
+	evidence: String!
+}
+
+type Issue @node {
+	createdAt: DateTime!
+	discussedInThreads: [Thread!]! @relationship(type: "DISCUSSED_IN", direction: OUT, properties: "DiscussedInProperties")
+	id: String!
+	identifier: String!
+	linearUrl: String!
+	peopleAssignedTo: [Person!]! @relationship(type: "ASSIGNED_TO", direction: IN)
+	peopleCreated: [Person!]! @relationship(type: "CREATED", direction: IN)
+	priority: BigInt!
+	projectsHasIssue: [Project!]! @relationship(type: "HAS_ISSUE", direction: IN)
+	state: String!
+	title: String!
+	updatedAt: DateTime!
+}
+
+type Message @node {
+	channelId: String!
+	peopleAuthored: [Person!]! @relationship(type: "AUTHORED", direction: IN)
+	permalink: String!
+	postedAt: DateTime!
+	text: String!
+	threadTs: String!
+	threadsHasMessage: [Thread!]! @relationship(type: "HAS_MESSAGE", direction: IN)
+	ts: String!
+}
+
+type Person @node {
+	assignedToIssues: [Issue!]! @relationship(type: "ASSIGNED_TO", direction: OUT)
+	authoredMessages: [Message!]! @relationship(type: "AUTHORED", direction: OUT)
+	createdIssues: [Issue!]! @relationship(type: "CREATED", direction: OUT)
+	email: String!
+	id: String!
+	linearId: String
+	name: String!
+	slackId: String!
+}
+
+type Project @node {
+	hasIssueIssues: [Issue!]! @relationship(type: "HAS_ISSUE", direction: OUT)
+	id: String!
+	name: String!
+}
+
+type Thread @node {
+	channelId: String!
+	channelsHostsThread: [Channel!]! @relationship(type: "HOSTS_THREAD", direction: IN)
+	hasMessageMessages: [Message!]! @relationship(type: "HAS_MESSAGE", direction: OUT)
+	issuesDiscussedIn: [Issue!]! @relationship(type: "DISCUSSED_IN", direction: IN, properties: "DiscussedInProperties")
+	messageCount: BigInt!
+	permalink: String!
+	startedAt: DateTime!
+	ts: String!
+}
