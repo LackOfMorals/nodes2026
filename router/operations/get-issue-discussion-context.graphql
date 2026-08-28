@@ -11,9 +11,9 @@ calls to Linear or Slack because the graph already has everything
 connected. Returns an empty list when the identifier is not in the
 graph.
 
-discussionDetails carries the evidence for how each issue–thread link
-was made (correlate with discussedInThreads by threadTs): explicit
-mentions carry confidence 1.0 and evidence "explicit_mention".
+Each discussion's link evidence (confidence, evidence, createdAt) is on
+the DISCUSSED_IN edge itself, under discussedInThreadsConnection.edges —
+explicit mentions carry confidence 1.0 and evidence "explicit_mention".
 
 The demo graph contains six issues, NODES-1 through NODES-6.
 """
@@ -37,30 +37,32 @@ query GetIssueDiscussionContext(
       name
       email
     }
-    discussedInThreads(sort: [{ startedAt: ASC }]) {
-      ts
-      startedAt
-      permalink
-      channelsHostsThread {
-        name
-      }
-      hasMessageMessages(sort: [{ ts: ASC }]) {
-        ts
-        postedAt
-        text
-        permalink
-        peopleAuthored {
-          name
-          email
+    discussedInThreadsConnection(sort: [{ node: { startedAt: ASC } }]) {
+      edges {
+        properties {
+          confidence
+          evidence
+          createdAt
+        }
+        node {
+          ts
+          startedAt
+          permalink
+          channelsHostsThread {
+            name
+          }
+          hasMessageMessages(sort: [{ ts: ASC }]) {
+            ts
+            postedAt
+            text
+            permalink
+            peopleAuthored {
+              name
+              email
+            }
+          }
         }
       }
-    }
-    discussionDetails {
-      threadTs
-      threadPermalink
-      confidence
-      evidence
-      createdAt
     }
   }
 }

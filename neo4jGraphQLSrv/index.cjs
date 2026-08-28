@@ -69,7 +69,10 @@ async function runSrvr() {
     const neo4jSchema = new Neo4jGraphQL({
         typeDefs,
         driver,
-        debug: false,
+        // Logs each resolved query's generated Cypher to the console — this is
+        // the "show the Cypher that resolved the persisted operation" beat in
+        // the live demo (TALK.md step 3), so keep it on.
+        debug: true,
     });
     
     

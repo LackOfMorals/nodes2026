@@ -79,3 +79,18 @@ FOR (c:Channel) ON (c.name);
 // confidence lets us filter "high-confidence links only" efficiently.
 CREATE INDEX discussed_in_confidence IF NOT EXISTS
 FOR ()-[r:DISCUSSED_IN]-() ON (r.confidence);
+
+// ----- Vector indexes (iteration 2) -----
+//
+// Dimension 768 matches nomic-embed-text-v1.5, the local LM Studio model
+// this demo embeds with. Changing embedding models means changing this
+// dimension and recreating both indexes — the embeddingModel property
+// written alongside every embedding is what lets you detect that drift
+// with a WHERE clause instead of it silently corrupting similarity scores.
+CREATE VECTOR INDEX issue_embedding IF NOT EXISTS
+FOR (i:Issue) ON (i.embedding)
+OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}};
+
+CREATE VECTOR INDEX message_embedding IF NOT EXISTS
+FOR (m:Message) ON (m.embedding)
+OPTIONS {indexConfig: {`vector.dimensions`: 768, `vector.similarity_function`: 'cosine'}};

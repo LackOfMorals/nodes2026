@@ -44,12 +44,12 @@ These were decided on 2026-08-27 and shape the whole plan:
 | `sync/` | Complete, builds and vets clean. Writer **verified end-to-end against the live container** via `internal/graph/writer_e2e_test.go` (`WRITER_E2E=1`). **Ran against the real workspaces on 2026-08-27 (Phase 2.3) — clean first run:** 6 issues (NEO-10..15, real states/priorities/URLs), 4 threads / 12 messages (t1 in with all 4 — the `include_all_metadata` fix proven live), system events skipped (the `SubType` filter proven live), 5 `DISCUSSED_IN` edges, t4 orphaned, one unified `:Person`. Linear client matches the live API exactly (`$projectId: String!`, raw-key auth header). |
 | Linear workspace | Seeded 2026-08-27: project "NODES 2026 Demo" (`1b3763ee-c856-4727-bc80-bf1ae5d0794b`, team `NEO`) + 6 issues **NEO-10..NEO-15** mirroring the story graph, with states/assignee set (NEO-10 In Progress + j.giffard; NEO-12 Todo; NEO-14 Done). See Phase 2.1. |
 | Slack workspace | Ready + seeded 2026-08-27: "Nodes 2026 Demo" workspace, `#nodes-demo-eng` (`C0BSX7Q9M0E`), bot token verified against all 5 sync-client endpoints, `users.info` returns email (unification OK). JG's Slack user `U0BSZ59TY66`. **Thread seeding done (Phase 2.2):** four threads posted by JG in the UI (not the bot), all authored by j.giffard@icloud.com — t1 `1787845145.093149` (names NEO-10; 3 replies), t2 `1787845177.141579` (names NEO-10/14/15; 2 replies), t3 `1787845201.547149` (names NEO-12; 1 reply), t4 `1787845220.346049` (names none — the orphan; 2 replies). Channel also carries 3 system events (filtered by the sync client's `SubType` check). |
-| `neo4j-api/` | **Done 2026-08-28 (Phase 4.1):** small Go plain-GraphQL HTTP service on `127.0.0.1:4400` (graphql-go + neo4j-go-driver v5.27.0). Root fields `getIssueDiscussionContext` + `searchMessages`, both verified live against the local graph (unknown identifier → null; search returns thread/channel/permalink hits). `schema.graphql` doubles as the router's static subgraph SDL. `//go:embed` workaround: `loadAsset` reads files from CWD/exe-dir at startup (Go 1.26.5 rejects embed on this machine). **Superseded as the registered subgraph 2026-08-28 (Phase 4.5); kept as an unwired fallback.** |
-| `neo4jGraphQLSrv/` | **Done 2026-08-28 (Phase 4.5):** the router's registered neo4j subgraph — `@neo4j/graphql` 7.6.2 + Yoga on `127.0.0.1:4000/graphql` (`node index.cjs`). Hand-written typeDefs in `schema.graphql` are the single source of truth: `Issue`/`Project` renamed `GraphIssue`/`GraphProject` via `@node(labels:)` (name collision with Linear's types hard-fails composition), plus two `@cypher` fields — `GraphIssue.discussionDetails` (`DISCUSSED_IN` confidence/evidence/permalink, correlated by `threadTs`) and root `searchMessagesCI` (case-insensitive; see Known issue 6). `gen-plain-schema.cjs` (`printSchema`) → gitignored `neo4j-plain-schema.graphql`, registered via `schema: {file: …}`; Make targets `make gen-neo4j-schema` / `make neo4j-srv`. Verified 31/31 MCP checks + combined 3-subgraph request. |
+| `neo4j-api/` | **Done 2026-08-28 (Phase 4.1):** small Go plain-GraphQL HTTP service on `127.0.0.1:4400` (graphql-go + neo4j-go-driver v5.27.0). Root fields `getIssueDiscussionContext` + `searchMessages`, both verified live against the local graph (unknown identifier → null; search returns thread/channel/permalink hits). `schema.graphql` doubles as the router's static subgraph SDL. `//go:embed` workaround: `loadAsset` reads files from CWD/exe-dir at startup (Go 1.26.5 rejects embed on this machine). Superseded as the registered subgraph 2026-08-28 (Phase 4.5); kept as an unwired fallback until then. **Removed 2026-08-28, see Known issue 9** — unreachable from any Make target and already drifting from `neo4jGraphQLSrv/`'s schema; git history retains it. |
+| `neo4jGraphQLSrv/` | **Done 2026-08-28 (Phase 4.5):** the router's registered neo4j subgraph — `@neo4j/graphql` 7.6.2 + Yoga on `127.0.0.1:4000/graphql` (`node index.cjs`). Hand-written typeDefs in `schema.graphql` are the single source of truth: `Issue`/`Project` renamed `GraphIssue`/`GraphProject` via `@node(labels:)` (name collision with Linear's types hard-fails composition), plus a `@cypher` field for root `searchMessagesCI` (case-insensitive; see Known issue 6). `gen-plain-schema.cjs` (`printSchema`) → gitignored `neo4j-plain-schema.graphql`, registered via `schema: {file: …}`; Make targets `make gen-neo4j-schema` / `make neo4j-srv`. Verified 31/31 MCP checks + combined 3-subgraph request. **Updated 2026-08-28, see Known issue 9:** the `GraphIssue.discussionDetails` `@cypher` field (confidence/evidence, correlated by `threadTs`) was removed in favor of the auto-generated `discussedInThreadsConnection`, which already exposes the same `DISCUSSED_IN` properties on the edge from one traversal; `debug` was also reverted `false → true` so the demo's live-Cypher beat still works. |
 | `router/` (was `staging/demo-router/`) | **Phase 4.1 done 2026-08-28:** router 0.343.1 composes all three subgraphs — Slack Connect plugin (**all 4 queries verified live** against the real workspace; the 5th, `searchSlackMessages`, was dropped 2026-08-28 — Slack's `search:read` is user-token-only, Known issue 4 RESOLVED), Linear (`raw: true` introspection, full SDL composed), and neo4j (generated plain-SDL from the Neo4j GraphQL library server, Phase 4.5). A single request touching all three subgraphs verified live. `graph.yaml` rendered from committed template by `make render-graph` (key from `.env`); runtime Linear auth via config.yaml `${LINEAR_API_KEY}` env expansion (verified working in 0.343.1). Start: `make start` (foreground) + `make neo4j-srv` (second terminal). |
 | Router config / persisted ops / MCP | **Done 2026-08-28 (Phase 4.2–4.4):** MCP Gateway on `localhost:5025` exposes exactly the four persisted operations + built-in `get_operation_info` (not the 60+ raw fields). All four `tools/call` round-trips verified live via JSON-RPC: `get_issue_discussion_context(NODES-1)` → issue + 2 discussions + all messages from the local graph (zero external calls); `search_messages(cache)` → 3 hits; `linear_project_issues` (zero-arg) → 6 real issues NEO-10..15; `slack_thread` → 4 live messages (t1). Runbook in `DEMO-ENV.md` → "Router (Phase 4 …)". |
 | Agent harness (Claude Desktop) | **Done headless 2026-08-28 (Phase 5.1–5.2):** both profiles committed (`mcp-profiles/`), switch script `scripts/switch-mcp-profile.sh` (back up → replace `mcpServers` only → restart). All four MCP paths verified headlessly this session via the exact stdio/JSON-RPC path Claude Desktop uses: router MCP (5 tools, `tools/call` round-trips), Linear hosted MCP (`Bearer` accepted), slack-mcp-server 1.3.0 with bot token + `--no-cache` (13 tools, real channel data, no search tool — see Known issue 7), Neo4j canary (`read-cypher`, `NEO4J_READ_ONLY=true`). Remaining: GUI runs + screenshots + timed dry run (5.3/5.4) — user-driven. |
-| Iteration 2 (vectors) | Not started. |
+| Iteration 2 (vectors) | **Built and verified end-to-end with real embeddings, 2026-08-28 (Phase 6).** nomic-embed-text-v1.5@q8_0 running in LM Studio; embedding client, writer methods, `schema.cypher` vector indexes, and `link-semantic.cypher` all live-verified against real Linear/Slack data in an isolated `livedemo` database (real orphaned thread → its issue at confidence 0.780) plus a permanent e2e test with synthetic vectors. `sync --watch` runs the whole pipeline (embed + semantic-link included) on a timer for the live demo. **Known, accepted tradeoff:** at this corpus's scale a fixed similarity threshold also surfaces a handful of extra links alongside the intended one — see Known issue 9 for the database-isolation fix and the full threshold finding. See PLAN.md Phase 6. |
 | Slides, dry runs, backup video | Not started. |
 
 Local toolchain: Go 1.26.5, Node 26.5.0, `wgc` 0.130.1 (via npx), podman.
@@ -169,6 +169,31 @@ neo4j/tap/cypher-shell`).
    Claude Desktop uses) handles it — full initialize → tools/list →
    tools/call round-trips work. Do not "fix" this by adding session
    tracking to the router.
+9. **Code-review follow-up, RESOLVED (2026-08-28).** A review of the
+   Phase 4.5 diff found and fixed: (a) `neo4jGraphQLSrv/index.cjs`'s
+   `debug` flag had been left `false`, which silently disabled the
+   Cypher-console-logging the live demo's "show the Cypher" beat
+   depends on — reverted to `true`; (b) `GraphIssue.discussionDetails`
+   (the hand-rolled `@cypher` field) duplicated data already available
+   via the auto-generated `discussedInThreadsConnection` (the
+   relationship already declares `properties: "DiscussedInProperties"`)
+   — removed `discussionDetails`/`DiscussionDetail` entirely;
+   `get-issue-discussion-context.graphql` now reads confidence/evidence
+   off `discussedInThreadsConnection.edges[].properties` in the same
+   traversal instead of a second hand-correlated list. Re-verified live:
+   31/31-equivalent MCP round-trip for `get_issue_discussion_context`
+   (NODES-1) through the full router → MCP gateway path, unchanged
+   response content. Also fixed: `scripts/switch-mcp-profile.sh` no
+   longer aborts `restore`/`show` when a secret is missing from `.env`
+   (previously a `pipefail` interaction made any subcommand die
+   silently), secret substitution moved from unescaped `sed` to a
+   literal Node string-replace (a secret containing `&`/`\`/`|` used to
+   corrupt or crash the substitution), and the two divergent inline
+   `mcpServers`-patch blocks were unified into one `patch_mcp_servers`
+   function. The old Go `neo4j-api/` fallback service (superseded in
+   Phase 4.5) was removed — it was unreachable from `make start`/`make
+   compose` and had already begun drifting from `neo4jGraphQLSrv/`'s
+   schema; git history retains it if ever needed.
 
 ---
 
@@ -509,33 +534,122 @@ synthesis ("explicit @shareable annotations…") in one persisted-operation
 call; the contrast run visibly makes more, weaker tool calls; the whole
 segment is under 8 minutes.
 
-## Phase 6 — Iteration 2: vectors (1–2 days, after Phase 5 is stable)
+## Phase 6 — Iteration 2: vectors (started 2026-08-28)
 
 Follow the iteration-2 design in `data-model/README.md`
 (Option 1: embed in the sync pipeline, LM Studio local, write vectors as
-properties).
+properties). **Decision (2026-08-28, ahead of the original end-of-September
+target):** iteration 2 is in the live demo, via a background `--watch`
+poll rather than a manual on-stage trigger — post to Slack/Linear during
+the talk and the graph updates without anyone running a command. See
+`sync/README.md` → "Live demo mode".
 
-- [ ] 6.1 Pick the embedding model in LM Studio and pin it (record
-      name + dimension; the `embeddingModel` property on Issue/Message
-      exists for mid-stream model changes).
-- [ ] 6.2 Add embedding client to `sync` (batched calls, 3–5 attempts
-      exponential backoff), write via
-      `db.create.setNodeVectorProperty`.
-- [ ] 6.3 `schema.cypher`: add the two `CREATE VECTOR INDEX` statements.
-- [ ] 6.4 New `queries/link-semantic.cypher`: top-k neighbours, cosine
-      threshold 0.75, create `:DISCUSSED_IN` with
-      `evidence = 'semantic_match'` and confidence = the similarity
-      score. (Keep 0.75 as the honest "heuristic" number for the talk.)
-- [ ] 6.5 Run against the seeded graph: Thread 4 must gain a link to
-      NODES-1 with confidence ≈ 0.8; `agent-context` returns it through
-      the same query, no changes.
-- [ ] 6.6 **Decision (end of September):** iteration 2 in the live demo
-      or slides-only, based on stability at that point. Either way, keep
-      the "here's what's coming / here's the cliffhanger" framing
-      workable (Prompt 2's iteration-1 answer is the fallback).
+- [x] 6.1 Pick the embedding model in LM Studio and pin it. **Done
+      2026-08-28: nomic-embed-text-v1.5@q8_0 (768 dim)**, downloaded via
+      `lms` CLI and running (`lms status` confirms server ON at :1234,
+      model loaded; `curl :1234/v1/embeddings` verified live — 768-dim
+      vectors, matches `schema.cypher`'s indexes exactly). Exact model
+      identifier per `curl :1234/v1/models`:
+      `text-embedding-nomic-embed-text-v1.5@q8_0` — the `@q8_0` suffix is
+      required in `EMBEDDING_MODEL`, not just the base name.
+- [x] 6.2 Embedding client added: `sync/internal/embed/client.go` — batched
+      (32 texts/request), 4 attempts exponential backoff, calls an
+      OpenAI-compatible `/v1/embeddings` endpoint. Writer methods
+      `EmbedIssue`/`EmbedMessage` write via
+      `db.create.setNodeVectorProperty` (`embed-issue.cypher`,
+      `embed-message.cypher`); `AllIssueTexts`/`AllMessageTexts` feed them
+      from the graph itself (not the current tick's pulled data), so the
+      stage is self-contained — same behaviour whether the graph was just
+      synced or not. `orchestrator.Run` takes a nilable `Embedder`; nil
+      skips the stage entirely (iteration 1 behaviour, unchanged, verified
+      by the existing e2e test still passing).
+- [x] 6.3 `schema.cypher`: both `CREATE VECTOR INDEX` statements added
+      (`issue_embedding`, `message_embedding`, 768 dim, cosine). Verified
+      live against the local container (Neo4j 2026.07.1) — index creation,
+      `db.create.setNodeVectorProperty`, and `db.index.vector.queryNodes`
+      all work with no gotchas beyond the dimension lock itself.
+- [x] 6.4 `queries/link-semantic.cypher` added: `CALL (i) { ... }`
+      variable-scoped subquery (works on 2026.07.1) over
+      `db.index.vector.queryNodes('message_embedding', $topK, i.embedding)`,
+      `WHERE score >= $threshold`, `MERGE ... ON CREATE SET` so an
+      existing explicit_mention edge is never downgraded. topK defaults
+      to 5 (`SEMANTIC_LINK_TOPK`), threshold to **0.78**
+      (`SEMANTIC_LINK_THRESHOLD`, raised from an initial 0.75 — see 6.5).
+      Verified with synthetic vectors: live against the canonical seeded
+      graph (Thread 4 → NODES-1 at confidence ~0.9998; existing explicit
+      edges on NODES-3/5/6 confirmed untouched) and in a permanent
+      regression test, `TestEmbedAndSemanticLinking_EndToEnd` in
+      `sync/internal/graph/writer_e2e_test.go` (gated by `WRITER_E2E=1`) —
+      seeds an orphaned thread, embeds it near an issue's embedding,
+      confirms the semantic edge forms, confirms a dissimilar thread does
+      NOT get linked (proves the threshold actually filters, not just
+      topK), and confirms re-running is idempotent. Passes twice in a row.
+- [x] 6.5 **Run with real embeddings — done 2026-08-28, and it surfaced a
+      real design problem, now resolved.** `sync` run live (real Linear +
+      real Slack, `EMBEDDING_MODEL=text-embedding-nomic-embed-text-v1.5@q8_0`)
+      against the same database as the canonical seed graph: the real
+      workspace mirrors the seed story closely enough (NEO-10 ≈ NODES-1,
+      etc.) that cross-links exploded between the fictional and real
+      versions of the same issues — not a threshold problem, a corpus
+      problem. **Fix: `livedemo`, a separate Neo4j database** (this
+      container is Enterprise, multi-database works: `CREATE DATABASE
+      livedemo`), created and schema-applied, so the live segment's real
+      data never coexists with the canonical seed graph. Re-run against
+      the isolated `livedemo` (8 real issues, 4 real threads): the
+      intended moment held — a real orphaned thread linked to NEO-10 at
+      confidence 0.780, evidence `semantic_match` — proving the exact
+      mechanism the talk depends on works with real embeddings, not just
+      synthetic ones. **But even isolated, 7 further spurious links
+      appeared** (confidence 0.759–0.779) among unrelated real issues —
+      at this corpus's scale, short same-project engineering text
+      clusters too tightly for any single fixed threshold to cleanly
+      separate signal from noise; 0.78 (tuned against the 6-issue
+      canonical corpus in isolation) does not generalize to the 8-issue
+      real corpus. **Decision (2026-08-28): ship as-is, accept the noise,
+      do not build top-1/reranking logic before the talk** — user's call
+      after being shown the exact numbers. If asked in Q&A why extra
+      links appear alongside the intended one, that's the honest answer:
+      it's the corpus-scale version of the "0.75 is a heuristic, not A/B
+      tested" tension `TALK.md` already plans to name on stage.
+- [x] 6.6 **Decision (2026-08-28, moved up from end of September):**
+      live in the demo, via `--watch` background polling (see above),
+      not a manual on-stage trigger and not slides-only.
 
 Acceptance: Thread 4 linked by the semantic pass only; rerunning the
-pass is idempotent (no duplicate edges, `MERGE` on the relationship).
+pass is idempotent (no duplicate edges, `MERGE` on the relationship). —
+**Met, with real embeddings, in the isolated `livedemo` database** (see
+6.5). Not met in the literal sense of "only" — extra links also appear at
+real-workspace scale, accepted as a known tradeoff, not a defect.
+
+### Known issue 9: real workspace data and canonical seed data must never share a database
+
+Discovered 2026-08-28 running Phase 6.5: the real Linear/Slack workspace
+mirrors the canonical seed story closely enough (NEO-10 ≈ NODES-1, etc.)
+that embedding both into the same database floods the semantic pass with
+cross-links between the fictional and real versions of the same issues.
+**Fixed by giving the live-embedding demo its own database (`livedemo`,
+created via `CREATE DATABASE livedemo`, Enterprise-only), never the
+default `neo4j` database the canonical seed graph lives in.** See
+`DEMO-ENV.md` → "Live embedding demo" for the full runbook, including the
+integration wrinkle this creates: the router's neo4j subgraph
+(`neo4jGraphQLSrv`) points at the `neo4j` database, so `livedemo`'s data
+isn't visible through `get_issue_discussion_context` without restarting
+that server against `livedemo` first (which then breaks the *main* demo
+segment until restarted back) — query `livedemo` directly instead during
+this segment.
+
+### Known issue 10: Slack rate limits under `--watch`, unverified
+
+Slack has tightened `conversations.history`/`conversations.replies`
+limits for non-Marketplace apps in the past; this demo's Slack app is a
+fresh single-workspace bot, not Marketplace-listed. Polling every
+`--interval` (default 20s) during a live segment could hit a 429. A
+failed tick logs and retries next interval rather than crashing the
+`--watch` loop, but repeated 429s during the live segment would still
+look bad even if nothing breaks outright. **Not yet verified against the
+real Slack app's actual tier limits** — do a real timed `--watch` dry run
+before the talk and watch the log for `status 429`; lengthen `--interval`
+if it appears. Linear's limits are generous enough not to worry about.
 
 ## Phase 7 — Talk deliverables (through October)
 

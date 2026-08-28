@@ -16,8 +16,7 @@ Subgraphs registered (Phase 4.1, verified live 2026-08-28):
   plain-GraphQL subgraphs, no wrapper plugin needed.
 - `neo4j` — the local `../neo4jGraphQLSrv` node server
   (`@neo4j/graphql` 7.6.2 + Yoga, `127.0.0.1:4000/graphql`), registered
-  from a generated plain-SDL file (see Decisions below). The old
-  `../neo4j-api` Go service (:4400) is kept as an unwired fallback.
+  from a generated plain-SDL file (see Decisions below).
 
 MCP Gateway (Phase 4.2–4.4, verified live 2026-08-28): the router also
 serves a Model Context Protocol endpoint at `http://localhost:5025/mcp`
@@ -143,12 +142,13 @@ go.sum in `plugins/slack/` locks the rest.
   `${LINEAR_API_KEY}` env expansion works in router 0.343.1, and the key
   appears nowhere in the composed `config.json`.
 - **Neo4j** (re-verified 2026-08-28 after the switch to the
-  `@neo4j/graphql` server): `graphIssues(where: {identifier: {eq:
-  "NODES-1"}}, limit: 1)` returns the issue with `discussedInThreads`
-  (channel, ts) and `discussionDetails` (the `DISCUSSED_IN`
-  confidence/evidence per thread, correlated by `threadTs`);
-  `searchMessagesCI` returns case-insensitive hits with
-  author/channel/thread/permalink.
+  `@neo4j/graphql` server, and again after dropping the hand-rolled
+  `discussionDetails` field in favor of the generated connection):
+  `graphIssues(where: {identifier: {eq: "NODES-1"}}, limit: 1)` returns
+  the issue with `discussedInThreadsConnection.edges` — each edge's
+  `node` (channel, ts) alongside its `properties` (the `DISCUSSED_IN`
+  confidence/evidence), from a single traversal; `searchMessagesCI`
+  returns case-insensitive hits with author/channel/thread/permalink.
 - **Combined**: a single request touching all three subgraphs
   (Linear `projects` + `slackChannel` + `graphIssues` +
   `searchMessagesCI`) returns everything in one response.

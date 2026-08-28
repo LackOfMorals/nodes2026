@@ -37,6 +37,7 @@ and prerequisites specific to that component.
 |-------------------|-----------|
 | Understand the argument | `TALK.md` |
 | See the architecture diagram | `TALK.md` — Architecture section |
+| See the slide-by-slide outline | `SLIDES.md` |
 | Understand the graph model | `data-model/README.md` |
 | Build the Slack subgraph plugin | `slack-subgraph/README.md` |
 | Build the sync pipeline | `sync/README.md` |

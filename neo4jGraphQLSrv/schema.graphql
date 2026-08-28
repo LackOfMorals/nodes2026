@@ -11,25 +11,9 @@ type DiscussedInProperties @relationshipProperties {
 	evidence: String!
 }
 
-type DiscussionDetail {
-	confidence: Float!
-	createdAt: DateTime!
-	evidence: String!
-	threadPermalink: String!
-	threadTs: String!
-}
-
 type GraphIssue @node(labels: "Issue") {
 	createdAt: DateTime!
 	discussedInThreads: [Thread!]! @relationship(type: "DISCUSSED_IN", direction: OUT, properties: "DiscussedInProperties")
-	discussionDetails: [DiscussionDetail!]! @cypher(
-		statement: """
-			MATCH (this:Issue)-[d:DISCUSSED_IN]->(t:Thread)
-			WITH t, d ORDER BY t.startedAt ASC
-			RETURN {threadTs: t.ts, threadPermalink: t.permalink, confidence: d.confidence, evidence: d.evidence, createdAt: d.createdAt} AS result
-		"""
-		columnName: "result"
-	)
 	id: String!
 	identifier: String!
 	linearUrl: String!

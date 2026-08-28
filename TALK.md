@@ -93,9 +93,18 @@ pretending it isn't there.
 sprawl for one more piece of operational surface area. The trade is worth it
 above roughly 4 MCP servers. Say that explicitly.
 
-**Threshold tuning for vector linking.** When iteration 2 lands, cosine
-similarity above 0.75 is a heuristic. Mention this. "We picked 0.75 after
-looking at maybe 50 examples; production needs to A/B test this."
+**Threshold tuning for vector linking.** Iteration 2 landed (2026-08-28)
+and this tension turned out to be real, not hypothetical: 0.78 (tuned
+against the 6-issue canonical seed graph, where it's the only value in a
+0.0024-wide window that keeps the intended link and excludes four false
+positives) still lets seven *further* false positives through once
+run against the real 8-issue workspace. Mention this on stage rather than
+letting a live run surprise anyone: "We picked this threshold by testing
+against our own seed data, not by A/B testing in production — and at this
+scale, short same-project text clusters tightly enough that no single
+number cleanly separates 'genuinely related' from 'same topic, different
+issue.' A production version of this needs a smarter scoring approach,
+not just a bigger threshold."
 
 ## Why this belongs at NODES specifically
 

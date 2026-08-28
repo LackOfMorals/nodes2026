@@ -27,24 +27,23 @@ Schema notes (why it looks the way it does):
   back to the graph labels with `@node(labels:)`). The raw names
   collide with Linear's `Issue`/`Project` types, and wgc hard-fails to
   compose shared type names across subgraphs.
-- Two `@cypher` fields cover what the generated schema can't express:
-  - `GraphIssue.discussionDetails` — the `DISCUSSED_IN` relationship
-    properties (confidence, evidence, thread permalink, `threadTs`)
-    as a plain list, kept separate from the `discussedInThreads`
-    relationship field and correlated by `threadTs`. Confidence/
-    evidence are load-bearing talk content.
-  - Root `searchMessagesCI` — the demo's only message search. The
-    library's `contains` filter compiles to plain `CONTAINS`, which is
-    **case-sensitive** on Neo4j 2026.x, so the field uses
-    `toLower(m.text) CONTAINS toLower($query)`; `LIMIT
-    toInteger(coalesce($limit, 20))` works around the driver sending
-    numbers as float (and null) params.
+- `GraphIssue.discussedInThreads` declares `properties:
+  "DiscussedInProperties"`, so `@neo4j/graphql` auto-generates
+  `discussedInThreadsConnection { edges { properties { confidence
+  evidence createdAt } node { ... } } } }` — the `DISCUSSED_IN`
+  confidence/evidence (load-bearing talk content) comes straight off
+  the edge in the same traversal, no `@cypher` field needed.
+- The one remaining `@cypher` field is root `searchMessagesCI` — the
+  demo's only message search. The library's `contains` filter compiles
+  to plain `CONTAINS`, which is **case-sensitive** on Neo4j 2026.x, so
+  the field uses `toLower(m.text) CONTAINS toLower($query)`; `LIMIT
+  toInteger(coalesce($limit, 20))` works around the driver sending
+  numbers as float (and null) params.
 - Generated root queries are plural-only (`graphIssues`,
   `graphProjects`, …); "not found" is an empty list, not null.
 
-The old Go service `../neo4j-api/` (:4400) is kept as an unwired
-fallback. See `../PLAN.md` (Phase 4.5, Known issue 6) and
-`../DEMO-ENV.md` → "Router (Phase 4 …)".
+See `../PLAN.md` (Phase 4.5, Known issue 6) and `../DEMO-ENV.md` →
+"Router (Phase 4 …)".
 
 ---
 

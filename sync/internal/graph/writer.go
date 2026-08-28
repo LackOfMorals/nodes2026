@@ -65,6 +65,11 @@ func NewWriter(ctx context.Context, cfg Config) (*Writer, error) {
 		"upsert-issue.cypher",
 		"upsert-thread.cypher",
 		"link-explicit.cypher",
+		"embed-issue.cypher",
+		"embed-message.cypher",
+		"all-issue-texts.cypher",
+		"all-message-texts.cypher",
+		"link-semantic.cypher",
 	} {
 		path := filepath.Join(cfg.QueriesDir, name)
 		body, err := os.ReadFile(path)
@@ -122,14 +127,14 @@ func (w *Writer) UpsertThread(ctx context.Context, channel syncslack.Channel, th
 	messages := make([]map[string]any, 0, len(thread.Messages))
 	for _, m := range thread.Messages {
 		messages = append(messages, map[string]any{
-			"ts":             m.TS,
-			"userId":         m.UserID,
-			"text":           m.Text,
-			"threadTs":       m.ThreadTS,
-			"permalink":      m.Permalink,
-			"authorEmail":    m.AuthorEmail,
-			"authorName":     m.AuthorName,
-			"authorSlackId":  m.AuthorSlackID,
+			"ts":            m.TS,
+			"userId":        m.UserID,
+			"text":          m.Text,
+			"threadTs":      m.ThreadTS,
+			"permalink":     m.Permalink,
+			"authorEmail":   m.AuthorEmail,
+			"authorName":    m.AuthorName,
+			"authorSlackId": m.AuthorSlackID,
 		})
 	}
 
@@ -153,6 +158,84 @@ func (w *Writer) RunExplicitLinking(ctx context.Context) error {
 	return w.execute(ctx, w.loadedQueries["link-explicit.cypher"], nil)
 }
 
+// IssueText is what the embed-and-link-semantic stage needs to embed one
+// Issue: its identity plus the text that gets sent to the embedding model.
+type IssueText struct {
+	ID         string
+	Identifier string
+	Text       string
+}
+
+// MessageText is the Message equivalent of IssueText.
+type MessageText struct {
+	ChannelID string
+	TS        string
+	Text      string
+}
+
+// AllIssueTexts returns every Issue's id and embeddable text (title).
+func (w *Writer) AllIssueTexts(ctx context.Context) ([]IssueText, error) {
+	rows, err := w.executeRead(ctx, w.loadedQueries["all-issue-texts.cypher"], nil)
+	if err != nil {
+		return nil, fmt.Errorf("list issue texts: %w", err)
+	}
+	out := make([]IssueText, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, IssueText{
+			ID:         row["id"].(string),
+			Identifier: row["identifier"].(string),
+			Text:       row["text"].(string),
+		})
+	}
+	return out, nil
+}
+
+// AllMessageTexts returns every Message's key and embeddable text.
+func (w *Writer) AllMessageTexts(ctx context.Context) ([]MessageText, error) {
+	rows, err := w.executeRead(ctx, w.loadedQueries["all-message-texts.cypher"], nil)
+	if err != nil {
+		return nil, fmt.Errorf("list message texts: %w", err)
+	}
+	out := make([]MessageText, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, MessageText{
+			ChannelID: row["channelId"].(string),
+			TS:        row["ts"].(string),
+			Text:      row["text"].(string),
+		})
+	}
+	return out, nil
+}
+
+// EmbedIssue writes an embedding vector onto a single Issue node.
+func (w *Writer) EmbedIssue(ctx context.Context, id string, vector []float64, embeddingModel string) error {
+	return w.execute(ctx, w.loadedQueries["embed-issue.cypher"], map[string]any{
+		"id":             id,
+		"vector":         vector,
+		"embeddingModel": embeddingModel,
+	})
+}
+
+// EmbedMessage writes an embedding vector onto a single Message node.
+func (w *Writer) EmbedMessage(ctx context.Context, channelID, ts string, vector []float64, embeddingModel string) error {
+	return w.execute(ctx, w.loadedQueries["embed-message.cypher"], map[string]any{
+		"channelId":      channelID,
+		"ts":             ts,
+		"vector":         vector,
+		"embeddingModel": embeddingModel,
+	})
+}
+
+// RunSemanticLinking executes the semantic linking pass: :DISCUSSED_IN
+// edges from vector similarity, for (issue, thread) pairs the explicit
+// pass didn't already link.
+func (w *Writer) RunSemanticLinking(ctx context.Context, threshold float64, topK int) error {
+	return w.execute(ctx, w.loadedQueries["link-semantic.cypher"], map[string]any{
+		"threshold": threshold,
+		"topK":      topK,
+	})
+}
+
 // execute runs a Cypher statement in a write transaction.
 func (w *Writer) execute(ctx context.Context, cypher string, params map[string]any) error {
 	session := w.driver.NewSession(ctx, neo4j.SessionConfig{
@@ -170,4 +253,34 @@ func (w *Writer) execute(ctx context.Context, cypher string, params map[string]a
 	}
 
 	return nil
+}
+
+// executeRead runs a Cypher statement in a read transaction and returns
+// each record as a map keyed by its RETURN aliases.
+func (w *Writer) executeRead(ctx context.Context, cypher string, params map[string]any) ([]map[string]any, error) {
+	session := w.driver.NewSession(ctx, neo4j.SessionConfig{
+		DatabaseName: w.databaseName,
+		AccessMode:   neo4j.AccessModeRead,
+	})
+	defer session.Close(ctx)
+
+	result, err := session.ExecuteRead(ctx, func(tx neo4j.ManagedTransaction) (any, error) {
+		res, err := tx.Run(ctx, cypher, params)
+		if err != nil {
+			return nil, err
+		}
+		records, err := res.Collect(ctx)
+		if err != nil {
+			return nil, err
+		}
+		rows := make([]map[string]any, 0, len(records))
+		for _, rec := range records {
+			rows = append(rows, rec.AsMap())
+		}
+		return rows, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("execute read cypher: %w", err)
+	}
+	return result.([]map[string]any), nil
 }

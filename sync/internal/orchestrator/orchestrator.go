@@ -28,8 +28,27 @@ type Config struct {
 	SlackSince      time.Time // pull Slack messages no older than this; zero = all
 }
 
-// Run executes the full sync pipeline.
-func Run(ctx context.Context, cfg Config, linearClient *linear.Client, slackClient *slack.Client, writer *graph.Writer) error {
+// Embedder produces embedding vectors for a batch of texts, in order, and
+// reports the model name that produced them. Implemented by
+// sync/internal/embed.Client; declared as an interface here so the
+// orchestrator doesn't need to import the embedding client's HTTP details.
+type Embedder interface {
+	Embed(ctx context.Context, texts []string) ([][]float64, error)
+	Model() string
+}
+
+// EmbedConfig carries the parameters for the embed-and-link-semantic
+// stage. Ignored when Run is called with a nil Embedder.
+type EmbedConfig struct {
+	Threshold float64 // minimum cosine similarity to create a :DISCUSSED_IN edge
+	TopK      int     // how many nearest messages to consider per issue
+}
+
+// Run executes the full sync pipeline: pull, upsert, explicit link, and
+// (when embedder is non-nil) embed + semantic link. A nil embedder skips
+// the embedding stage entirely — sync remains fully usable without an
+// embedding service configured, matching iteration 1 behaviour.
+func Run(ctx context.Context, cfg Config, linearClient *linear.Client, slackClient *slack.Client, writer *graph.Writer, embedder Embedder, embedCfg EmbedConfig) error {
 	if err := syncLinear(ctx, cfg, linearClient, writer); err != nil {
 		return fmt.Errorf("sync linear: %w", err)
 	}
@@ -40,6 +59,14 @@ func Run(ctx context.Context, cfg Config, linearClient *linear.Client, slackClie
 
 	if err := linkExplicit(ctx, cfg, writer); err != nil {
 		return fmt.Errorf("link explicit: %w", err)
+	}
+
+	if embedder != nil {
+		if err := embedAndLinkSemantic(ctx, writer, embedder, embedCfg); err != nil {
+			return fmt.Errorf("embed and link semantic: %w", err)
+		}
+	} else {
+		log.Println("no embedder configured — skipping embedding and semantic linking")
 	}
 
 	log.Println("sync complete")
@@ -102,6 +129,63 @@ func linkExplicit(ctx context.Context, cfg Config, writer *graph.Writer) error {
 		return fmt.Errorf("link: %w", err)
 	}
 	log.Println("explicit linking done")
+
+	return nil
+}
+
+// embedAndLinkSemantic (re-)embeds every Issue and Message in the graph
+// and runs the semantic linking pass. It re-reads text from the graph
+// rather than reusing this tick's pulled data, so it works the same way
+// whether the graph was just synced or has been sitting untouched — and
+// re-embedding everything every tick is simpler and safer than tracking
+// what changed at this demo's scale (a handful of issues and messages).
+func embedAndLinkSemantic(ctx context.Context, writer *graph.Writer, embedder Embedder, cfg EmbedConfig) error {
+	issues, err := writer.AllIssueTexts(ctx)
+	if err != nil {
+		return fmt.Errorf("list issues: %w", err)
+	}
+	if len(issues) > 0 {
+		texts := make([]string, len(issues))
+		for i, issue := range issues {
+			texts[i] = issue.Text
+		}
+		vectors, err := embedder.Embed(ctx, texts)
+		if err != nil {
+			return fmt.Errorf("embed issues: %w", err)
+		}
+		for i, issue := range issues {
+			if err := writer.EmbedIssue(ctx, issue.ID, vectors[i], embedder.Model()); err != nil {
+				return fmt.Errorf("write embedding for %s: %w", issue.Identifier, err)
+			}
+		}
+		log.Printf("embedded %d issues", len(issues))
+	}
+
+	messages, err := writer.AllMessageTexts(ctx)
+	if err != nil {
+		return fmt.Errorf("list messages: %w", err)
+	}
+	if len(messages) > 0 {
+		texts := make([]string, len(messages))
+		for i, m := range messages {
+			texts[i] = m.Text
+		}
+		vectors, err := embedder.Embed(ctx, texts)
+		if err != nil {
+			return fmt.Errorf("embed messages: %w", err)
+		}
+		for i, m := range messages {
+			if err := writer.EmbedMessage(ctx, m.ChannelID, m.TS, vectors[i], embedder.Model()); err != nil {
+				return fmt.Errorf("write embedding for message %s: %w", m.TS, err)
+			}
+		}
+		log.Printf("embedded %d messages", len(messages))
+	}
+
+	if err := writer.RunSemanticLinking(ctx, cfg.Threshold, cfg.TopK); err != nil {
+		return fmt.Errorf("semantic linking: %w", err)
+	}
+	log.Println("semantic linking done")
 
 	return nil
 }

@@ -277,6 +277,136 @@ Notes:
   in place — but a real-data run should still start from a wipe so the
   graph is exactly "what the sources look like now".
 
+## Live embedding demo (Phase 6)
+
+Shows entries getting incorporated into the graph *live*, with vector
+embedding — not the canonical seeded graph, the real sync pipeline
+running in the background while you talk. See `sync/README.md` →
+"Embedding and semantic linking" / "Live demo mode" for the full design;
+this is the on-stage recipe.
+
+**Runs against a dedicated `livedemo` database, never the default
+`neo4j` database that holds the canonical seed graph.** This isn't
+cosmetic — verified live on 2026-08-28 that it's load-bearing: the real
+Linear/Slack workspace mirrors the same demo story as the canonical seed
+data (NEO-10 ≈ NODES-1, etc.), so if both coexist in one database, their
+near-duplicate phrasing floods the semantic pass with cross-links
+between the fictional and real versions of the same issues. Isolating
+them in separate databases removes that specific failure mode entirely.
+Creating it once:
+
+```bash
+curl -s -u neo4j:password http://localhost:7474/db/system/tx/commit \
+  -H 'Content-Type: application/json' \
+  -d '{"statements":[{"statement":"CREATE DATABASE livedemo IF NOT EXISTS"}]}'
+
+# apply schema.cypher's constraints + vector indexes to it (once) —
+# paste data-model/schema.cypher's 18 statements into the web console
+# with the target database switched to "livedemo" (top-left selector),
+# or POST them individually to /db/livedemo/tx/commit.
+```
+
+**Prerequisites:**
+
+- LM Studio running with an embedding model loaded and its local server
+  started (`lms server start`, or the app's "Local Server" tab). This
+  demo is built around **nomic-embed-text-v1.5** (768 dim, the `@q8_0`
+  quantization verified live) — matches `schema.cypher`'s vector indexes.
+  A different model needs a different index dimension — see PLAN.md
+  Phase 6.1.
+- The real Linear/Slack workspaces from [SaaS prerequisites](#saas-prerequisites--credentials),
+  since this demo posts genuinely new content to them, not the canonical
+  seed data.
+- One real timed dry run of `--watch` at your chosen `--interval` before
+  the talk, watching the log for `status 429` (PLAN.md Known issue 10 —
+  Slack's rate limits for a non-Marketplace app are unverified against
+  this demo's actual polling cadence).
+
+**Known, accepted limitation — extra links may appear.** Verified live
+2026-08-28 against the real workspace (8 issues, 4 threads, in the
+isolated `livedemo` database): the intended moment works — a real
+orphaned thread linked to its issue at confidence 0.780, evidence
+`semantic_match` — but **7 other semantic links also appeared** among
+unrelated issues (confidence 0.759–0.779). At this corpus's scale, short
+same-project engineering text clusters too tightly for `0.78` (or any
+single fixed threshold) to cleanly separate "genuinely related" from
+"same-domain-different-topic" — this is the corpus-scale version of the
+"0.75 is a heuristic, not A/B tested" tension `TALK.md` already plans to
+name on stage. **Decision (2026-08-28): ship it as-is, accept the noise,
+do not add reranking/top-1 logic before the talk.** If asked in Q&A why
+other links appeared alongside the intended one, that's the honest
+answer, not a bug to apologize for.
+
+**Setup, before you go on stage:**
+
+```bash
+set -a; . ./.env; set +a
+cd sync
+go build -o bin/sync ./cmd/sync
+
+export NEO4J_URI=bolt://localhost:7687
+export NEO4J_USER=neo4j
+export NEO4J_PASSWORD=password
+export NEO4J_DATABASE=livedemo                                       # NOT the default "neo4j" db — see above
+export EMBEDDING_BASE_URL=http://localhost:1234/v1
+export EMBEDDING_MODEL="text-embedding-nomic-embed-text-v1.5@q8_0"    # match what `curl localhost:1234/v1/models` reports
+
+./bin/sync --watch --interval 20s \
+  --linear-project "$LINEAR_PROJECT_ID" --slack-channel "$SLACK_CHANNEL_ID"
+```
+
+Leave this running in a terminal the audience can see (or a second
+screen). It logs every tick — pulled issues/threads, `embedded N issues`,
+`embedded N messages`, `semantic linking done` — so the "it's working"
+signal is visible without needing to query the graph directly.
+
+**On stage:**
+
+1. Post a new Slack message in `#nodes-demo-eng` that discusses an
+   existing issue's topic **without naming its identifier** — the same
+   shape as the orphaned Thread 4 in the canonical seed data. Or create a
+   new Linear issue.
+2. Talk for the length of one `--interval` (or two, to be safe) while it
+   sits there.
+3. Point at the terminal: the next tick picks it up, embeds it, and (if
+   the similarity clears `SEMANTIC_LINK_THRESHOLD`) creates the
+   `:DISCUSSED_IN` edge live — evidence `semantic_match`, not
+   `explicit_mention`, because nothing in the graph was told to look for
+   this connection; the embedding found it.
+4. Show the new edge. **The router's neo4j subgraph (`neo4jGraphQLSrv`)
+   points at the `neo4j` database, not `livedemo`** — the MCP agent tool
+   (`get_issue_discussion_context`) won't see this segment's data unless
+   you restart it against `livedemo` first (`NEO4J_DATABASE=livedemo
+   node index.cjs`, then re-point the router or just query
+   `:4000/graphql` directly), which also means the *main* demo segment's
+   `get_issue_discussion_context` calls stop working until you restart it
+   back. Simplest for this segment: skip the MCP tool and show the edge
+   directly —
+   ```bash
+   curl -s -u neo4j:password http://localhost:7474/db/livedemo/tx/commit \
+     -H 'Content-Type: application/json' \
+     -d '{"statements":[{"statement":"MATCH (i:Issue)-[d:DISCUSSED_IN]->(t:Thread) WHERE d.evidence = \"semantic_match\" RETURN i.identifier, t.ts, d.confidence ORDER BY d.createdAt DESC LIMIT 5"}]}'
+   ```
+   or the Neo4j Browser pointed at `livedemo`, with the browser's graph
+   view doing the visual work instead of a JSON blob.
+
+**Recovery, if something doesn't land in front of the audience:** the
+loop keeps ticking regardless — a failed or empty tick just means "try
+again next interval," not a crash. If the whole segment is going badly,
+fall back to the canonical seeded story (Thread 4 already demonstrates
+the same "orphaned thread, semantic match" moment, just pre-baked) and
+move on; this segment is additive to the main demo, not load-bearing for
+it.
+
+**After the talk:** stop the `--watch` process. The canonical `neo4j`
+database was never touched by this segment (that's the point of
+`livedemo` being separate), so there's nothing to restore there. If you
+want `livedemo` itself back to a clean slate for the next rehearsal:
+`MATCH (n) DETACH DELETE n` against `/db/livedemo/tx/commit` (or the web
+console with the database selector set to `livedemo`), then re-run
+`./bin/sync` once (without `--watch`) to repopulate it from the real
+workspaces before your next dry run.
+
 ## Router (Phase 4 — three subgraphs + MCP gateway)
 
 The local Cosmo Router project lives in `router/` (router 0.343.1,
@@ -303,18 +433,18 @@ wgc 0.130.1). Three subgraphs are registered in `router/graph.yaml`
    `neo4jGraphQLSrv/schema.graphql` are the single source of truth;
    `@node(labels:)` maps them to the graph labels — the demo types are
    named `GraphIssue`/`GraphProject` because raw `Issue`/`Project`
-   names collide with Linear's types in the composed supergraph. Two
-   `@cypher` fields cover what the generated schema can't express:
-   `GraphIssue.discussionDetails` (threadTs/permalink + the
-   `DISCUSSED_IN` confidence/evidence — load-bearing talk content) and
-   root `searchMessagesCI` (case-insensitive message search; Neo4j
-   2026.x `CONTAINS` is case-sensitive). The router registers a
-   **generated plain-SDL file** (`schema: {file:
+   names collide with Linear's types in the composed supergraph.
+   `discussedInThreadsConnection` (auto-generated from the
+   `DISCUSSED_IN` relationship's `properties: "DiscussedInProperties"`)
+   carries the confidence/evidence for each link directly on the edge
+   — load-bearing talk content, no `@cypher` needed. The one remaining
+   `@cypher` field is root `searchMessagesCI` (case-insensitive message
+   search; Neo4j 2026.x `CONTAINS` is case-sensitive). The router
+   registers a **generated plain-SDL file** (`schema: {file:
    ../neo4jGraphQLSrv/neo4j-plain-schema.graphql}`) — a gitignored
    build artifact produced by `make gen-neo4j-schema` (plain SDL from
    the library's schema via `printSchema`, which strips the `@cypher`
-   directives). The old Go service `neo4j-api/` (:4400) is kept as an
-   unwired fallback.
+   directive).
 
 ### Start (two terminals, from the repo root)
 
@@ -481,11 +611,12 @@ workaround needed.
 > What did the team decide about the schema validation issue in NODES-1?
 
 Expected: exactly **one** tool call, `get_issue_discussion_context`
-(`identifier: "NODES-1"`). Verified response shape (2026-08-28): one issue
-(In Progress, priority 4, created/assigned Sarah Chen) + `discussedInThreads`
-with 2 threads (4 + 3 messages, `#nodes-demo-eng`) + `discussionDetails` with
-2 entries, both `confidence: 1`, `evidence: "explicit_mention"`. Expected
-synthesis (TALK.md):
+(`identifier: "NODES-1"`). Verified response shape (2026-08-28, re-verified
+2026-08-28 after switching to `discussedInThreadsConnection`): one issue
+(In Progress, priority 4, created/assigned Sarah Chen) +
+`discussedInThreadsConnection.edges` with 2 entries (4 + 3 messages,
+`#nodes-demo-eng`), each edge's `properties` carrying `confidence: 1`,
+`evidence: "explicit_mention"` directly. Expected synthesis (TALK.md):
 
 > The team decided to use explicit `@shareable` annotations across all three
 > subgraphs to preserve nullability during composition. Sarah identified the

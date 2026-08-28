@@ -32,17 +32,67 @@ case "$cmd" in
   *) echo "usage: $0 federated|no-federation|restore|show [profile]" >&2; exit 1 ;;
 esac
 
-[[ -f "$REPO_ROOT/.env" ]] || { echo "missing $REPO_ROOT/.env" >&2; exit 1; }
-env_val() { grep -E "^$1=" "$REPO_ROOT/.env" | head -1 | cut -d= -f2-; }
-LINEAR_API_KEY=$(env_val LINEAR_API_KEY)
-SLACK_BOT_TOKEN=$(env_val SLACK_BOT_TOKEN)
-NEO4J_PASSWORD=$(env_val NEO4J_PASSWORD)
+# env_val <KEY> — read KEY from .env (if present), stripping one layer of
+# surrounding quotes. Prints "" (not an error) when .env or the key is
+# missing — commands that don't need secrets (restore, show federated)
+# must not fail just because a key isn't set; render() below is what
+# decides whether a missing value actually matters, and says so clearly.
+env_val() {
+  local line=""
+  [[ -f "$REPO_ROOT/.env" ]] && line=$(grep -E "^$1=" "$REPO_ROOT/.env" | head -1 || true)
+  local value=${line#*=}
+  value=${value%\"}; value=${value#\"}
+  value=${value%\'}; value=${value#\'}
+  printf '%s' "$value"
+}
 
-render() { # render <federated|no-federation> → stdout
+# render <federated|no-federation> → stdout. Substitutes each __KEY__
+# placeholder with its .env value via Node's literal string replace, not
+# sed — secrets can contain sed metacharacters (&, \, the delimiter) that
+# would otherwise corrupt the output or crash the substitution. Only
+# placeholders actually present in the profile file are required; a
+# missing value fails with a clear message naming the key, before
+# anything is written.
+render() {
   local f="$REPO_ROOT/mcp-profiles/$1.json"
-  sed -e "s|__LINEAR_API_KEY__|$LINEAR_API_KEY|g" \
-      -e "s|__SLACK_BOT_TOKEN__|$SLACK_BOT_TOKEN|g" \
-      -e "s|__NEO4J_PASSWORD__|$NEO4J_PASSWORD|g" "$f"
+  [[ -f "$f" ]] || { echo "no such profile: $1" >&2; exit 1; }
+  LINEAR_API_KEY="$(env_val LINEAR_API_KEY)" \
+  SLACK_BOT_TOKEN="$(env_val SLACK_BOT_TOKEN)" \
+  NEO4J_PASSWORD="$(env_val NEO4J_PASSWORD)" \
+  node -e '
+    const fs = require("fs");
+    const path = process.argv[1];
+    let text = fs.readFileSync(path, "utf8");
+    const KEYS = ["LINEAR_API_KEY", "SLACK_BOT_TOKEN", "NEO4J_PASSWORD"];
+    const missing = [];
+    for (const key of KEYS) {
+      const placeholder = `__${key}__`;
+      if (!text.includes(placeholder)) continue;
+      const value = process.env[key];
+      if (!value) { missing.push(key); continue; }
+      text = text.split(placeholder).join(value);
+    }
+    if (missing.length) {
+      console.error(`render: missing .env value(s) for: ${missing.join(", ")}`);
+      process.exit(1);
+    }
+    process.stdout.write(text);
+  ' "$f"
+}
+
+# patch_mcp_servers <configPath> <sourcePath> — replace configPath's
+# "mcpServers" key with sourcePath's; every other top-level key in
+# configPath is left untouched. Shared by both restore and install so
+# there's one JSON-patch implementation instead of two that can drift.
+patch_mcp_servers() {
+  node -e '
+    const fs = require("fs");
+    const [configPath, sourcePath] = process.argv.slice(1);
+    const live = JSON.parse(fs.readFileSync(configPath, "utf8"));
+    const source = JSON.parse(fs.readFileSync(sourcePath, "utf8"));
+    live.mcpServers = source.mcpServers ?? {};
+    fs.writeFileSync(configPath, JSON.stringify(live, null, 2) + "\n");
+  ' "$1" "$2"
 }
 
 if [[ "$cmd" == "show" ]]; then
@@ -54,14 +104,7 @@ fi
 
 if [[ "$cmd" == "restore" ]]; then
   [[ -f "$BACKUP" ]] || { echo "no backup at $BACKUP — nothing to restore" >&2; exit 1; }
-  node -e '
-    const fs = require("fs");
-    const [configPath, backupPath] = process.argv.slice(1);
-    const live = JSON.parse(fs.readFileSync(configPath, "utf8"));
-    const backup = JSON.parse(fs.readFileSync(backupPath, "utf8"));
-    live.mcpServers = backup.mcpServers ?? {};
-    fs.writeFileSync(configPath, JSON.stringify(live, null, 2) + "\n");
-  ' "$CONFIG" "$BACKUP"
+  patch_mcp_servers "$CONFIG" "$BACKUP"
   echo "Restored pre-talk mcpServers from $BACKUP."
   echo "Restart Claude Desktop."
   exit 0
@@ -77,14 +120,7 @@ RENDERED=$(mktemp)
 trap 'rm -f "$RENDERED"' EXIT
 render "$cmd" > "$RENDERED"
 
-node -e '
-  const fs = require("fs");
-  const [configPath, profilePath] = process.argv.slice(1);
-  const live = JSON.parse(fs.readFileSync(configPath, "utf8"));
-  const profile = JSON.parse(fs.readFileSync(profilePath, "utf8"));
-  live.mcpServers = profile.mcpServers;
-  fs.writeFileSync(configPath, JSON.stringify(live, null, 2) + "\n");
-' "$CONFIG" "$RENDERED"
+patch_mcp_servers "$CONFIG" "$RENDERED"
 
 echo "Installed '$cmd' profile — mcpServers replaced, other settings preserved."
 echo "Restart Claude Desktop for it to take effect."

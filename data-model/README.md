@@ -104,6 +104,11 @@ The dominant query direction is "given an issue, find discussions." Modelling th
 | `queries/upsert-thread.cypher` | Idempotent thread + messages upsert | Once per thread, during sync |
 | `queries/link-explicit.cypher` | Regex-based linking pass | After each batch of new messages |
 | `queries/agent-context.cypher` | The closing demo query | Resolved by a persisted operation in the gateway |
+| `queries/embed-issue.cypher` | Write an embedding vector onto one Issue | Once per issue, during the embed-and-link-semantic sync stage |
+| `queries/embed-message.cypher` | Write an embedding vector onto one Message | Once per message, same stage |
+| `queries/all-issue-texts.cypher` | List every Issue's id + embeddable text | Read before embedding, same stage |
+| `queries/all-message-texts.cypher` | List every Message's key + embeddable text | Read before embedding, same stage |
+| `queries/link-semantic.cypher` | Vector-similarity linking pass | After embedding, following the explicit pass |
 
 ## Running it
 
