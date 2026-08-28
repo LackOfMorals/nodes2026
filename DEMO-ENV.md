@@ -386,22 +386,25 @@ curl -s http://localhost:5025/mcp \
 messages in one call against the local graph, with zero external network
 calls (the talk's main segment).
 
-### MCP client config (Claude Desktop — Phase 5.1)
+### MCP client config (Claude Desktop)
 
-`claude_desktop_config.json`:
+The verified working form (2026-08-28) is the `mcp-remote` stdio bridge
+— the bare `url` form is not what is proven:
 
 ```json
 {
   "mcpServers": {
     "nodes2026": {
-      "url": "http://localhost:5025/mcp"
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:5025/mcp"]
     }
   }
 }
 ```
 
-The contrast profile (Phase 5.2) instead registers three separate MCP
-servers (Linear, Slack, Neo4j) in a second config.
+Both talk profiles are committed under `mcp-profiles/` and installed by
+`scripts/switch-mcp-profile.sh` — see "Phase 5 — Claude Desktop profiles
+and the contrast demo" below.
 
 ### Stop / regenerate
 
@@ -425,3 +428,99 @@ real workspace; Linear `projects`/`project` with real data; both graph
 queries against the local graph; a single combined request touching all
 three subgraphs; and the MCP `tools/list` + `tools/call` round-trip for
 all four persisted operations (see `router/README.md`).
+
+---
+
+## Phase 5 — Claude Desktop profiles and the contrast demo
+
+Two Claude Desktop MCP profiles, both committed under `mcp-profiles/`:
+
+| Profile | File | MCP servers | Used for |
+|---------|------|-------------|----------|
+| A — federated | `mcp-profiles/federated.json` | `nodes2026` (router MCP Gateway via `mcp-remote`) | Demo main segment: one endpoint, five tools, one persisted-operation call |
+| B — no federation | `mcp-profiles/no-federation.json` | `linear` (official hosted MCP), `slack` (slack-mcp-server), `neo4j` (local canary binary) | Contrast: scattered servers, more and weaker tool calls |
+
+### Switching profiles
+
+```sh
+scripts/switch-mcp-profile.sh federated        # install profile A
+scripts/switch-mcp-profile.sh no-federation    # install profile B
+scripts/switch-mcp-profile.sh restore          # pre-talk mcpServers
+scripts/switch-mcp-profile.sh show [profile]   # print rendered JSON, change nothing
+```
+
+- The **first** switch backs up the whole live config to
+  `~/Library/Application Support/Claude/claude_desktop_config.json.nodes2026.bak`
+  and never overwrites an existing backup.
+- Only the `mcpServers` key is replaced; everything else in the live
+  config (`coworkUserFilesPath`, `preferences`, …) is preserved.
+- Credentials are substituted from the repo `.env` at switch time; the
+  committed profile files contain only `__PLACEHOLDERS__`.
+- **Restart Claude Desktop after every switch.**
+
+The live config's pre-talk `mcpServers` also contains `neo4j-gong` /
+`neo4j-c360` (Aura canary entries) — profile A deliberately drops them so
+the federated view shows exactly one server. `restore` brings them back.
+
+### Contrast server inventory (all verified headless 2026-08-28)
+
+| Server | Wiring | Verified | Notes for the talk |
+|--------|--------|----------|--------------------|
+| `linear` | `url: https://mcp.linear.app/mcp` + `Authorization: Bearer <key>` | initialize OK, serverInfo "Linear MCP" v1.0.0 | The MCP endpoint **accepts** the `Bearer` prefix (the raw Linear GraphQL API rejects it). Needs internet. |
+| `slack` | `npx -y slack-mcp-server@1.3.0 --transport stdio --no-cache`, env `SLACK_MCP_XOXB_TOKEN` | initialize OK, 13 tools, `conversations_history` + `conversations_replies` returned real `#nodes-demo-eng` data incl. thread t1 | **No message-search tool** — bot tokens cannot call `search.messages` (Known issue 4); that is the contrast point, not a gap. The `--no-cache` flag is load-bearing: see PLAN.md Known issue 7. Use channel IDs, not names (no cache). |
+| `neo4j` | local canary binary, `NEO4J_READ_ONLY=true` | initialize OK (v0.4.0), 4 tools, `read-cypher` returned NODES-1… | The tool is named **`read-cypher`**, not `cypher`. The agent must write its own Cypher — another "weaker without federation" point (no off-the-shelf `getIssueDiscussionContext`). |
+
+The router's MCP endpoint is **stateless**: `initialize` returns no
+`mcp-session-id` header and that is correct — per the MCP spec the client
+then never sends a session header. `mcp-remote` handles it; no client-side
+workaround needed.
+
+### Prompt rehearsal (5.3)
+
+**Prompt 1 (federated path)** —
+> What did the team decide about the schema validation issue in NODES-1?
+
+Expected: exactly **one** tool call, `get_issue_discussion_context`
+(`identifier: "NODES-1"`). Verified response shape (2026-08-28): one issue
+(In Progress, priority 4, created/assigned Sarah Chen) + `discussedInThreads`
+with 2 threads (4 + 3 messages, `#nodes-demo-eng`) + `discussionDetails` with
+2 entries, both `confidence: 1`, `evidence: "explicit_mention"`. Expected
+synthesis (TALK.md):
+
+> The team decided to use explicit `@shareable` annotations across all three
+> subgraphs to preserve nullability during composition. Sarah identified the
+> root cause; Alex made the decision and confirmed the fix landed.
+
+(Decision message: Alex Rivera, "Going with the explicit @shareable annotation
+approach … across all three subgraphs." in thread 1.)
+
+**Prompt 2 (cliffhanger, only if time allows)** —
+> Has anyone discussed the same problem recently without referencing the
+> issue directly?
+
+Iteration-1 answer: "I don't have visibility into discussions that don't
+reference the issue." (Thread 4 is deliberately orphaned — no `DISCUSSED_IN`
+edge. Vectors in Phase 6 find it by semantic similarity.)
+
+On profile B the same Prompt 1 is expected to degrade visibly: the agent must
+pick among separate servers, hand-write Cypher against `neo4j` (no composed
+operation), and cannot search Slack at all.
+
+### Morning-of checklist (both profiles)
+
+1. `podman ps` — `neo4j-prod-01` up; if not, `podman start neo4j-prod-01`.
+2. Start the two foreground services (see Router → Start above):
+   `make neo4j-srv` (:4000) and `make start` (:3010/:5025).
+3. `tools/list` sanity: the curl in Router → Verify must show exactly the
+   five tools.
+4. Pre-warm the npx caches so first use is instant:
+   `npx -y mcp-remote --version` and
+   `npx -y slack-mcp-server@1.3.0 --transport stdio --no-cache` (exit
+   immediately — it just needs to be in the cache).
+5. Confirm internet access for the hosted Linear MCP (profile B).
+6. `scripts/switch-mcp-profile.sh federated` → restart Claude Desktop →
+   confirm one MCP server with five tools → run Prompt 1 → screenshot the
+   single tool call + answer.
+7. `scripts/switch-mcp-profile.sh no-federation` → restart → confirm three
+   servers → run Prompt 1 again → screenshot the weaker/longer tool trail.
+8. `scripts/switch-mcp-profile.sh restore` → restart (post-talk reset).

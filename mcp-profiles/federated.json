@@ -1,0 +1,9 @@
+{
+  "_comment": "NODES 2026 talk — Config A (federated). Single MCP server: the local Cosmo Router MCP Gateway. Mirrors the verified working entry in the live claude_desktop_config.json (2026-08-28). Installed by scripts/switch-mcp-profile.sh federated — only the mcpServers key is replaced, other config keys are preserved.",
+  "mcpServers": {
+    "nodes2026": {
+      "command": "npx",
+      "args": ["mcp-remote", "http://localhost:5025/mcp"]
+    }
+  }
+}

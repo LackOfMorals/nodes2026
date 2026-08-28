@@ -48,7 +48,7 @@ These were decided on 2026-08-27 and shape the whole plan:
 | `neo4jGraphQLSrv/` | **Done 2026-08-28 (Phase 4.5):** the router's registered neo4j subgraph — `@neo4j/graphql` 7.6.2 + Yoga on `127.0.0.1:4000/graphql` (`node index.cjs`). Hand-written typeDefs in `schema.graphql` are the single source of truth: `Issue`/`Project` renamed `GraphIssue`/`GraphProject` via `@node(labels:)` (name collision with Linear's types hard-fails composition), plus two `@cypher` fields — `GraphIssue.discussionDetails` (`DISCUSSED_IN` confidence/evidence/permalink, correlated by `threadTs`) and root `searchMessagesCI` (case-insensitive; see Known issue 6). `gen-plain-schema.cjs` (`printSchema`) → gitignored `neo4j-plain-schema.graphql`, registered via `schema: {file: …}`; Make targets `make gen-neo4j-schema` / `make neo4j-srv`. Verified 31/31 MCP checks + combined 3-subgraph request. |
 | `router/` (was `staging/demo-router/`) | **Phase 4.1 done 2026-08-28:** router 0.343.1 composes all three subgraphs — Slack Connect plugin (**all 4 queries verified live** against the real workspace; the 5th, `searchSlackMessages`, was dropped 2026-08-28 — Slack's `search:read` is user-token-only, Known issue 4 RESOLVED), Linear (`raw: true` introspection, full SDL composed), and neo4j (generated plain-SDL from the Neo4j GraphQL library server, Phase 4.5). A single request touching all three subgraphs verified live. `graph.yaml` rendered from committed template by `make render-graph` (key from `.env`); runtime Linear auth via config.yaml `${LINEAR_API_KEY}` env expansion (verified working in 0.343.1). Start: `make start` (foreground) + `make neo4j-srv` (second terminal). |
 | Router config / persisted ops / MCP | **Done 2026-08-28 (Phase 4.2–4.4):** MCP Gateway on `localhost:5025` exposes exactly the four persisted operations + built-in `get_operation_info` (not the 60+ raw fields). All four `tools/call` round-trips verified live via JSON-RPC: `get_issue_discussion_context(NODES-1)` → issue + 2 discussions + all messages from the local graph (zero external calls); `search_messages(cache)` → 3 hits; `linear_project_issues` (zero-arg) → 6 real issues NEO-10..15; `slack_thread` → 4 live messages (t1). Runbook in `DEMO-ENV.md` → "Router (Phase 4 …)". |
-| Agent harness (Claude Desktop) | Not started. |
+| Agent harness (Claude Desktop) | **Done headless 2026-08-28 (Phase 5.1–5.2):** both profiles committed (`mcp-profiles/`), switch script `scripts/switch-mcp-profile.sh` (back up → replace `mcpServers` only → restart). All four MCP paths verified headlessly this session via the exact stdio/JSON-RPC path Claude Desktop uses: router MCP (5 tools, `tools/call` round-trips), Linear hosted MCP (`Bearer` accepted), slack-mcp-server 1.3.0 with bot token + `--no-cache` (13 tools, real channel data, no search tool — see Known issue 7), Neo4j canary (`read-cypher`, `NEO4J_READ_ONLY=true`). Remaining: GUI runs + screenshots + timed dry run (5.3/5.4) — user-driven. |
 | Iteration 2 (vectors) | Not started. |
 | Slides, dry runs, backup video | Not started. |
 
@@ -142,6 +142,33 @@ neo4j/tap/cypher-shell`).
      absent/null variable fails outright. Pattern: `LIMIT
      toInteger(coalesce($param, N))` (verified for limit=3/20/null).
    Affects the sync pipeline's raw Cypher and any future `@cypher` work.
+7. **slack-mcp-server fatal boot with a bot token. RESOLVED via
+   `--no-cache` (2026-08-28, Phase 5.2).** `npx slack-mcp-server@1.3.0`
+   (korotovsky) authenticates fine with `SLACK_MCP_XOXB_TOKEN` but dies at
+   boot: `Error booting provider — API returned zero channels and no
+   existing cache is available`. Root cause (debug log): its
+   `RefreshChannels` enumerates **all** channel types, and this bot lacks
+   `im:read` / `mpim:read` — `conversations.list types=im` /
+   `types=mpim` return `missing_scope`, and the failed enumeration aborts
+   startup instead of keeping the 3 public channels it already fetched.
+   Fix used: `--no-cache` skips the user/channel cache watchers, so boot
+   succeeds; `conversations_history` / `conversations_replies` by channel
+   **ID** work against the real demo channel (verified, incl. thread t1),
+   the tool list is 13 tools with **no `conversations_search_messages`**
+   (bot tokens can't call `search.messages` — Known issue 4, by design for
+   the contrast). Trade-off: no `#channel-name` / `@username` lookup — the
+   demo uses channel IDs, which is fine. Alternative not taken: adding
+   `im:read` + `mpim:read` to the app and reinstalling (works too, but
+   needs an app-settings step; `--no-cache` keeps the profile
+   self-contained).
+8. **Router MCP endpoint is stateless — no `mcp-session-id`. Observed,
+   no action needed (2026-08-28, Phase 5.1).** `initialize` against
+   `localhost:5025/mcp` returns an SSE envelope **without** an
+   `mcp-session-id` response header. Per the MCP spec the client must not
+   send a session header in that case, and `mcp-remote` (the exact bridge
+   Claude Desktop uses) handles it — full initialize → tools/list →
+   tools/call round-trips work. Do not "fix" this by adding session
+   tracking to the router.
 
 ---
 
@@ -443,21 +470,37 @@ zero external network calls.
 
 ## Phase 5 — Agent harness + contrast demo (a few hours, after Phase 4)
 
-- [ ] 5.1 Claude Desktop (or claude.ai connector) config A — **federated**:
-      single MCP server at the local router MCP endpoint, bearer token if
-      enabled.
-- [ ] 5.2 Config B — **world without federation**: three separate MCP
-      servers (Linear MCP, Slack MCP, Neo4j MCP) in a second profile so
-      demo step 1 (scattered tool calls, weaker answer) is real. This
-      profile needs internet for the Linear/Slack servers. Note: stock
-      Slack MCP servers run on bot tokens and therefore have **no message
-      search** (Slack `search.messages` is user-token-only — Known issue
-      4); the graph's `searchMessages` is the only search surface in the
-      demo. That is a feature for the contrast, not a gap.
+- [x] 5.1 Config A — **federated**: single MCP server at the local router
+      MCP endpoint. `mcp-profiles/federated.json` uses the verified
+      `npx mcp-remote http://localhost:5025/mcp` stdio bridge (the form in
+      the live config that works; bearer token not needed locally).
+      **Verified headless 2026-08-28** through that exact bridge:
+      initialize + `tools/list` (exactly 5 tools) + `tools/call` round-trip.
+      GUI check (puzzle-piece icon shows one server / five tools) is part
+      of the user-driven 5.3/5.4.
+- [x] 5.2 Config B — **world without federation**: `mcp-profiles/no-federation.json`
+      registers three separate MCP servers — Linear (official hosted MCP,
+      `url` + `Authorization: Bearer` — the MCP endpoint accepts the Bearer
+      prefix even though the raw GraphQL API rejects it), Slack
+      (`slack-mcp-server@1.3.0` stdio, bot token, `--no-cache` — see Known
+      issue 7), Neo4j (local canary binary, `NEO4J_READ_ONLY=true`, read
+      tool named `read-cypher`). **All three verified headless
+      2026-08-28** (initialize + tool lists + real-data `tools/call`s;
+      Slack has 13 tools and no message-search tool — Known issue 4 in
+      action, a feature for the contrast). Profile files carry
+      `__PLACEHOLDERS__`; `scripts/switch-mcp-profile.sh` substitutes from
+      `.env`, backs up the live config once, replaces only `mcpServers`,
+      and `show`/`restore` subcommands are provided. Profile B needs
+      internet for the Linear server. GUI check is user-driven (5.3/5.4).
 - [ ] 5.3 Rehearse both demo prompts from `TALK.md` (Prompt 1 federated;
       Prompt 2 the orphaned-thread cliffhanger) and capture the tool-call
       traces — they're the exhibit for the "context window impact" slide
-      (20+ tools → handful of operations).
+      (20+ tools → handful of operations). **Headless rehearsal done
+      2026-08-28:** Prompt 1 through the bridge returns the full NODES-1
+      context in one call (issue + 2 threads / 7 messages + 2
+      `discussionDetails` confidence 1 / `explicit_mention`); expected
+      synthesis + rehearsal steps documented in `DEMO-ENV.md` → "Phase 5 →
+      Prompt rehearsal". Remaining: the GUI runs + screenshots (user).
 - [ ] 5.4 First full end-to-end dry run, timed. Capture screenshots of
       both profiles as fallback material.
 
