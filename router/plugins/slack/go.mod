@@ -3,13 +3,13 @@ module github.com/wundergraph/cosmo/plugin
 go 1.25.1
 
 require (
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/wundergraph/cosmo/router-plugin v0.0.0-20250824152218-8eebc34c4995 // v0.4.1
 	google.golang.org/grpc v1.68.1
 	google.golang.org/protobuf v1.36.5
 )
 
-require github.com/slack-go/slack v0.15.0
+require github.com/slack-go/slack v0.23.1
 
 require (
 	github.com/cenkalti/backoff/v4 v4.2.1 // indirect
@@ -19,7 +19,7 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
-	github.com/gorilla/websocket v1.4.2 // indirect
+	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.19.0 // indirect
 	github.com/hashicorp/go-hclog v1.6.3 // indirect
 	github.com/hashicorp/go-plugin v1.6.3 // indirect
