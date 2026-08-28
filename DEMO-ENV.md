@@ -297,18 +297,30 @@ wgc 0.130.1). Three subgraphs are registered in `router/graph.yaml`
    expansion in `config.yaml` → `headers.subgraphs.linear.request`
    (verified working in 0.343.1 — the key appears nowhere in the
    composed `config.json`).
-3. **Neo4j** — the local Go service `neo4j-api/` on
-   `127.0.0.1:4400` (plain GraphQL; root fields
-   `getIssueDiscussionContext` + `searchMessages`, both resolved from
-   the local graph). Registered with a **static schema file**
-   (`schema: {file: ../neo4j-api/schema.graphql}` — that file is the
-   single source of truth; keep it in sync if you change the service).
+3. **Neo4j** — the local `neo4jGraphQLSrv/` node server
+   (`@neo4j/graphql` 7.6.2 + Yoga, `node index.cjs`) on
+   `127.0.0.1:4000/graphql`. The hand-written typeDefs in
+   `neo4jGraphQLSrv/schema.graphql` are the single source of truth;
+   `@node(labels:)` maps them to the graph labels — the demo types are
+   named `GraphIssue`/`GraphProject` because raw `Issue`/`Project`
+   names collide with Linear's types in the composed supergraph. Two
+   `@cypher` fields cover what the generated schema can't express:
+   `GraphIssue.discussionDetails` (threadTs/permalink + the
+   `DISCUSSED_IN` confidence/evidence — load-bearing talk content) and
+   root `searchMessagesCI` (case-insensitive message search; Neo4j
+   2026.x `CONTAINS` is case-sensitive). The router registers a
+   **generated plain-SDL file** (`schema: {file:
+   ../neo4jGraphQLSrv/neo4j-plain-schema.graphql}`) — a gitignored
+   build artifact produced by `make gen-neo4j-schema` (plain SDL from
+   the library's schema via `printSchema`, which strips the `@cypher`
+   directives). The old Go service `neo4j-api/` (:4400) is kept as an
+   unwired fallback.
 
 ### Start (two terminals, from the repo root)
 
 ```bash
-# Terminal 1 — Neo4j subgraph service (:4400), foreground
-(cd router && make neo4j-api)
+# Terminal 1 — Neo4j GraphQL library server (:4000), foreground
+(cd router && make neo4j-srv)
 
 # Terminal 2 — router (:3010) + MCP gateway (:5025), foreground
 (cd router && make start)
@@ -318,7 +330,11 @@ wgc 0.130.1). Three subgraphs are registered in `router/graph.yaml`
 (Slack plugin) + `compose` (render graph.yaml + `wgc router compose`) +
 run. It sources `../.env` itself, so the only env requirement is that
 the repo-root `.env` exists with the values in the
-[Credentials](#credentials--env-convention) section.
+[Credentials](#credentials--env-convention) section. Fresh checkout
+only: the neo4j subgraph server needs `cd neo4jGraphQLSrv && npm
+install` once (node 26.5.0; installed deps @neo4j/graphql 7.6.2,
+graphql-yoga 5.22.0, neo4j-driver 5.28.3 — see
+`neo4jGraphQLSrv/package.json`).
 
 ### Ports
 
@@ -326,7 +342,7 @@ the repo-root `.env` exists with the values in the
 |------|------|
 | `http://localhost:3010/graphql` | Federated GraphQL endpoint (playground at `/`) |
 | `http://localhost:5025/mcp` | MCP gateway (streamable HTTP; the agent-facing endpoint) |
-| `http://127.0.0.1:4400/graphql` | neo4j-api subgraph (reached through the router, not used directly) |
+| `http://127.0.0.1:4000/graphql` | Neo4j GraphQL library subgraph (reached through the router, not used directly) |
 | `http://127.0.0.1:8088/metrics` | Router Prometheus metrics |
 
 ### MCP gateway tools
@@ -355,7 +371,7 @@ persisted operations — an MCP client discovers the table below, not the
 # GraphQL side — one request touching all three subgraphs:
 curl -s http://localhost:3010/graphql \
   -H 'Content-Type: application/json' \
-  -d '{"query":"{ projects(first: 1) { nodes { name } } slackChannel(id: \"C0BSX7Q9M0E\") { name } getIssueDiscussionContext(identifier: \"NODES-1\") { identifier discussions { threadTs } } }"}'
+  -d '{"query":"{ projects(first: 1) { nodes { name } } slackChannel(id: \"C0BSX7Q9M0E\") { name } graphIssues(where: {identifier: {eq: \"NODES-1\"}}, limit: 1) { identifier discussedInThreads { ts } } }"}'
 
 # MCP side — tools/list works stateless (no initialize/session dance):
 curl -s http://localhost:5025/mcp \
@@ -390,7 +406,7 @@ servers (Linear, Slack, Neo4j) in a second config.
 ### Stop / regenerate
 
 - Stop: find the PID (`lsof -tiTCP:3010 -sTCP:LISTEN`), kill by PID.
-  Same for the subgraph service (`lsof -tiTCP:4400 -sTCP:LISTEN`).
+  Same for the neo4j subgraph server (`lsof -tiTCP:4000 -sTCP:LISTEN`).
   Avoid `pkill -f` patterns that can match the invoking shell.
 - After changing an operation file: restart the router (no file
   watching — static execution config).
@@ -398,9 +414,11 @@ servers (Linear, Slack, Neo4j) in a second config.
   `router/plugins/slack`, then `make compose` + restart. The pinned
   protoc 29.3 lives in `router/tools/` and the Makefiles apply it
   automatically (see `router/README.md`).
-- After changing `neo4j-api/` code or `schema.graphql`: `make neo4j-api`
-  rebuilds and runs it; if the SDL changed, also `make compose` +
-  restart the router (the composed config embeds the static schema).
+- After changing `neo4jGraphQLSrv/` code: kill the port-4000 PID and
+  restart with `make neo4j-srv`. If `neo4jGraphQLSrv/schema.graphql`
+  changed, additionally `make gen-neo4j-schema && make compose` +
+  restart the router (the composed config embeds the generated
+  plain SDL).
 
 Verified live 2026-08-28: all four Slack plugin queries against the
 real workspace; Linear `projects`/`project` with real data; both graph

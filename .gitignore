@@ -20,6 +20,8 @@ neo4j-api/bin/
 
 # Node dependencies (regenerable — see neo4jGraphQLSrv/package.json)
 neo4jGraphQLSrv/node_modules/
+# Generated plain-SDL for the router (make gen-neo4j-schema; source of truth is neo4jGraphQLSrv/schema.graphql)
+neo4jGraphQLSrv/neo4j-plain-schema.graphql
 
 # macOS
 .DS_Store

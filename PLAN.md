@@ -44,8 +44,9 @@ These were decided on 2026-08-27 and shape the whole plan:
 | `sync/` | Complete, builds and vets clean. Writer **verified end-to-end against the live container** via `internal/graph/writer_e2e_test.go` (`WRITER_E2E=1`). **Ran against the real workspaces on 2026-08-27 (Phase 2.3) — clean first run:** 6 issues (NEO-10..15, real states/priorities/URLs), 4 threads / 12 messages (t1 in with all 4 — the `include_all_metadata` fix proven live), system events skipped (the `SubType` filter proven live), 5 `DISCUSSED_IN` edges, t4 orphaned, one unified `:Person`. Linear client matches the live API exactly (`$projectId: String!`, raw-key auth header). |
 | Linear workspace | Seeded 2026-08-27: project "NODES 2026 Demo" (`1b3763ee-c856-4727-bc80-bf1ae5d0794b`, team `NEO`) + 6 issues **NEO-10..NEO-15** mirroring the story graph, with states/assignee set (NEO-10 In Progress + j.giffard; NEO-12 Todo; NEO-14 Done). See Phase 2.1. |
 | Slack workspace | Ready + seeded 2026-08-27: "Nodes 2026 Demo" workspace, `#nodes-demo-eng` (`C0BSX7Q9M0E`), bot token verified against all 5 sync-client endpoints, `users.info` returns email (unification OK). JG's Slack user `U0BSZ59TY66`. **Thread seeding done (Phase 2.2):** four threads posted by JG in the UI (not the bot), all authored by j.giffard@icloud.com — t1 `1787845145.093149` (names NEO-10; 3 replies), t2 `1787845177.141579` (names NEO-10/14/15; 2 replies), t3 `1787845201.547149` (names NEO-12; 1 reply), t4 `1787845220.346049` (names none — the orphan; 2 replies). Channel also carries 3 system events (filtered by the sync client's `SubType` check). |
-| `neo4j-api/` | **Done 2026-08-28 (Phase 4.1):** small Go plain-GraphQL HTTP service on `127.0.0.1:4400` (graphql-go + neo4j-go-driver v5.27.0). Root fields `getIssueDiscussionContext` + `searchMessages`, both verified live against the local graph (unknown identifier → null; search returns thread/channel/permalink hits). `schema.graphql` doubles as the router's static subgraph SDL. `//go:embed` workaround: `loadAsset` reads files from CWD/exe-dir at startup (Go 1.26.5 rejects embed on this machine). |
-| `router/` (was `staging/demo-router/`) | **Phase 4.1 done 2026-08-28:** router 0.343.1 composes all three subgraphs — Slack Connect plugin (**all 4 queries verified live** against the real workspace; the 5th, `searchSlackMessages`, was dropped 2026-08-28 — Slack's `search:read` is user-token-only, Known issue 4 RESOLVED), Linear (`raw: true` introspection, full SDL composed), and neo4j (static schema file). A single request touching all three subgraphs verified live. `graph.yaml` rendered from committed template by `make render-graph` (key from `.env`); runtime Linear auth via config.yaml `${LINEAR_API_KEY}` env expansion (verified working in 0.343.1). Start: `make start` (foreground) + `make neo4j-api` (second terminal). |
+| `neo4j-api/` | **Done 2026-08-28 (Phase 4.1):** small Go plain-GraphQL HTTP service on `127.0.0.1:4400` (graphql-go + neo4j-go-driver v5.27.0). Root fields `getIssueDiscussionContext` + `searchMessages`, both verified live against the local graph (unknown identifier → null; search returns thread/channel/permalink hits). `schema.graphql` doubles as the router's static subgraph SDL. `//go:embed` workaround: `loadAsset` reads files from CWD/exe-dir at startup (Go 1.26.5 rejects embed on this machine). **Superseded as the registered subgraph 2026-08-28 (Phase 4.5); kept as an unwired fallback.** |
+| `neo4jGraphQLSrv/` | **Done 2026-08-28 (Phase 4.5):** the router's registered neo4j subgraph — `@neo4j/graphql` 7.6.2 + Yoga on `127.0.0.1:4000/graphql` (`node index.cjs`). Hand-written typeDefs in `schema.graphql` are the single source of truth: `Issue`/`Project` renamed `GraphIssue`/`GraphProject` via `@node(labels:)` (name collision with Linear's types hard-fails composition), plus two `@cypher` fields — `GraphIssue.discussionDetails` (`DISCUSSED_IN` confidence/evidence/permalink, correlated by `threadTs`) and root `searchMessagesCI` (case-insensitive; see Known issue 6). `gen-plain-schema.cjs` (`printSchema`) → gitignored `neo4j-plain-schema.graphql`, registered via `schema: {file: …}`; Make targets `make gen-neo4j-schema` / `make neo4j-srv`. Verified 31/31 MCP checks + combined 3-subgraph request. |
+| `router/` (was `staging/demo-router/`) | **Phase 4.1 done 2026-08-28:** router 0.343.1 composes all three subgraphs — Slack Connect plugin (**all 4 queries verified live** against the real workspace; the 5th, `searchSlackMessages`, was dropped 2026-08-28 — Slack's `search:read` is user-token-only, Known issue 4 RESOLVED), Linear (`raw: true` introspection, full SDL composed), and neo4j (generated plain-SDL from the Neo4j GraphQL library server, Phase 4.5). A single request touching all three subgraphs verified live. `graph.yaml` rendered from committed template by `make render-graph` (key from `.env`); runtime Linear auth via config.yaml `${LINEAR_API_KEY}` env expansion (verified working in 0.343.1). Start: `make start` (foreground) + `make neo4j-srv` (second terminal). |
 | Router config / persisted ops / MCP | **Done 2026-08-28 (Phase 4.2–4.4):** MCP Gateway on `localhost:5025` exposes exactly the four persisted operations + built-in `get_operation_info` (not the 60+ raw fields). All four `tools/call` round-trips verified live via JSON-RPC: `get_issue_discussion_context(NODES-1)` → issue + 2 discussions + all messages from the local graph (zero external calls); `search_messages(cache)` → 3 hits; `linear_project_issues` (zero-arg) → 6 real issues NEO-10..15; `slack_thread` → 4 live messages (t1). Runbook in `DEMO-ENV.md` → "Router (Phase 4 …)". |
 | Agent harness (Claude Desktop) | Not started. |
 | Iteration 2 (vectors) | Not started. |
@@ -130,6 +131,17 @@ neo4j/tap/cypher-shell`).
    "To do" (it is done and building); its architecture section and the
    root README's quick-start describe the cut AWS/Aura/ECS/Cosmo-Cloud
    path. Update both when Phase 4 lands (task 7.4).
+6. **Neo4j 2026.x Cypher strictness (discovered 2026-08-28, Phase 4.5).**
+   Two gotchas in raw Cypher and `@cypher` fields:
+   - `CONTAINS` is **case-sensitive** (the `@neo4j/graphql` v7 `contains`
+     filter compiles to plain `CONTAINS`). Case-insensitive matching must
+     be written explicitly: `toLower(a) CONTAINS toLower(b)` (used by
+     `searchMessagesCI`).
+   - `LIMIT $param` **rejects driver float and null bindings** — the JS
+     driver sends numbers as float (`'3.0' is not a valid value`) and an
+     absent/null variable fails outright. Pattern: `LIMIT
+     toInteger(coalesce($param, N))` (verified for limit=3/20/null).
+   Affects the sync pipeline's raw Cypher and any future `@cypher` work.
 
 ---
 
@@ -320,7 +332,9 @@ first.
       (see Known issue 3 for the full recipe). Wiring as built:
       - `neo4j-api/` — small Go plain-GraphQL HTTP service on
         `127.0.0.1:4400` (user chose Go over the Node.js
-        `@neo4j/graphql` option). `graphql-go` + `neo4j-go-driver
+        `@neo4j/graphql` option — **switched to the Node.js library
+        server 2026-08-28, see 4.5**; the Go service is kept as an
+        unwired fallback). `graphql-go` + `neo4j-go-driver
         v5.27.0`; root fields `getIssueDiscussionContext` +
         `searchMessages`, both verified live against the local graph.
         Notes: `MustParseSchema(..., graphql.UseFieldResolvers())` is
@@ -387,7 +401,40 @@ first.
       `make start`), port table (3010 GraphQL/playground, 5025 MCP,
       4400 neo4j-api, 8088 Prometheus), the five-tool table, curl smoke
       tests, the Claude Desktop MCP client snippet (Phase 5.1 input),
-      and stop/regenerate procedures.
+      and stop/regenerate procedures. (Updated for 4.5: `make
+      neo4j-srv`, port 4000.)
+- [x] 4.5 Switch the neo4j subgraph from `neo4j-api/` (Go, :4400) to
+      `neo4jGraphQLSrv/` (`@neo4j/graphql` 7.6.2 + Yoga, :4000).
+      Done 2026-08-28 (user-approved): the hand-written typeDefs in
+      `neo4jGraphQLSrv/schema.graphql` are the single source of truth.
+      **Rename:** `Issue`/`Project` are also Linear type names and wgc
+      hard-fails composing shared type names across subgraphs, so the
+      demo types became `GraphIssue`/`GraphProject` with `@node(labels:)`
+      mapping them back to the graph labels (all 6 types got explicit
+      `@node(labels:)`). **Two `@cypher` fields** (v7 signature
+      `@cypher(statement: String!, columnName: String!)`, plain `type
+      Query`, `RETURN {…} AS result` per row for object lists):
+      `GraphIssue.discussionDetails` — the `DISCUSSED_IN`
+      confidence/evidence/permalink (load-bearing talk content) kept
+      separate from the relationship field `discussedInThreads` and
+      correlated by `threadTs` — and root `searchMessagesCI`, the
+      demo's only search surface, case-insensitive because the
+      library's `contains` filter compiles to plain `CONTAINS`, which
+      is case-sensitive on Neo4j 2026.x (Known issue 6); its
+      `LIMIT toInteger(coalesce($limit, 20))` avoids the driver
+      float/null param rejection. **Generated SDL:** new
+      `gen-plain-schema.cjs` (`new Neo4jGraphQL({typeDefs, driver:
+      null})` → `printSchema(await getSchema())`) writes the gitignored
+      `neo4j-plain-schema.graphql` (printSchema strips the `@cypher`
+      directives — clean plain SDL); `graph.yaml.template` registers it
+      via `schema: {file: …}` and `compose` depends on `make
+      gen-neo4j-schema`. Both graph operations were rewritten against
+      the new plural root fields (not-found = empty list, not null).
+      Verified 31/31 MCP JSON-RPC checks (5 tools + schemas, NODES-1
+      structure with 2 correlated `discussionDetails`, NODES-99 empty,
+      search hits, case-insensitivity, limit honored, Linear/Slack
+      round-trips) plus a combined 3-subgraph request through :3010.
+      `neo4j-api/` kept as an unwired fallback.
 
 Acceptance: MCP client discovers only persisted operations; calling
 `getIssueDecisionContext`/`getIssueDiscussionContext` for NODES-1 returns

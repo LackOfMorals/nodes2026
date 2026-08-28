@@ -12,7 +12,8 @@ const config = {
     neo4jPassword: process.env.NEO4J_PASSWORD || 'password',
     neo4jDatabase: process.env.NEO4J_DATABASE || 'neo4j',
     neo4jIntrospect: process.env.NEO4J_INTROSPECT || 'false',
-    neo4jSchema: process.env.NEO4J_SCHEMA || 'schema.graphql'
+    neo4jSchema: process.env.NEO4J_SCHEMA || 'schema.graphql',
+    port: parseInt(process.env.PORT || '4000', 10)
 };
 
 
@@ -68,13 +69,14 @@ async function runSrvr() {
     const neo4jSchema = new Neo4jGraphQL({
         typeDefs,
         driver,
-        debug: true,
+        debug: false,
     });
     
     
     // Create a Yoga instance with the neo4j schema and set the neo4j database to use
     const yoga = createYoga({
         schema: await neo4jSchema.getSchema(),
+        graphqlEndpoint: "/graphql", // graphql-yoga 5 default; pinned explicitly
         context: async ({ request }) => ({
           driver,
           driverConfig: {
@@ -87,8 +89,8 @@ async function runSrvr() {
     const server = createServer(yoga)
     
     // Start the server and all is well
-    server.listen(4000, () => {
-    console.info('Server is running on http://localhost:4000/graphql')
+    server.listen(config.port, () => {
+    console.info(`Server is running on http://localhost:${config.port}/graphql`)
     })
 }
 

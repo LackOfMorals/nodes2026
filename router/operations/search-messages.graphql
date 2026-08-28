@@ -14,14 +14,21 @@ query SearchMessages(
   "Maximum number of hits to return"
   $limit: Int = 20
 ) {
-  searchMessages(query: $query, limit: $limit) {
+  searchMessagesCI(query: $query, limit: $limit) {
     ts
     postedAt
     text
-    authorName
-    authorEmail
     permalink
     threadTs
-    channel
+    peopleAuthored {
+      name
+      email
+    }
+    threadsHasMessage {
+      ts
+      channelsHostsThread {
+        name
+      }
+    }
   }
 }

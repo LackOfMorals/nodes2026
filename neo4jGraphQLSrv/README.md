@@ -1,6 +1,52 @@
 # Neo4js GraphQL Library with Yoga GraphQL Server
 
+## NODES 2026 demo usage
 
+This folder is the router's registered neo4j subgraph (Phase 4.5). The
+hand-written typeDefs in `schema.graphql` are the **single source of
+truth** — the server loads them directly (introspection is off in
+`index.cjs`), so there is no drift between what the server serves and
+what the router composes.
+
+- Install once on a fresh checkout: `npm install` (node 26.5.0;
+  @neo4j/graphql 7.6.2, graphql-yoga 5.22.0, neo4j-driver 5.28.3).
+- Run the server: `node index.cjs` → `http://127.0.0.1:4000/graphql`
+  (env from `../.env`: `NEO4J_URI/USER/PASSWORD/DATABASE`; `PORT`
+  overrides the port). Or from `router/`: `make neo4j-srv`.
+- Generate the plain-SDL file the router composes:
+  `node gen-plain-schema.cjs` (or `make gen-neo4j-schema` from
+  `router/`) → **gitignored** `neo4j-plain-schema.graphql` (printed SDL
+  via `printSchema`, which strips the `@cypher` directives). `router/
+  graph.yaml.template` registers it via `schema: {file: …}`; `make
+  compose` regenerates it first. After any change to `schema.graphql`:
+  `make gen-neo4j-schema && make compose` + restart the router.
+
+Schema notes (why it looks the way it does):
+
+- `Issue`/`Project` are named **`GraphIssue`/`GraphProject`** (mapped
+  back to the graph labels with `@node(labels:)`). The raw names
+  collide with Linear's `Issue`/`Project` types, and wgc hard-fails to
+  compose shared type names across subgraphs.
+- Two `@cypher` fields cover what the generated schema can't express:
+  - `GraphIssue.discussionDetails` — the `DISCUSSED_IN` relationship
+    properties (confidence, evidence, thread permalink, `threadTs`)
+    as a plain list, kept separate from the `discussedInThreads`
+    relationship field and correlated by `threadTs`. Confidence/
+    evidence are load-bearing talk content.
+  - Root `searchMessagesCI` — the demo's only message search. The
+    library's `contains` filter compiles to plain `CONTAINS`, which is
+    **case-sensitive** on Neo4j 2026.x, so the field uses
+    `toLower(m.text) CONTAINS toLower($query)`; `LIMIT
+    toInteger(coalesce($limit, 20))` works around the driver sending
+    numbers as float (and null) params.
+- Generated root queries are plural-only (`graphIssues`,
+  `graphProjects`, …); "not found" is an empty list, not null.
+
+The old Go service `../neo4j-api/` (:4400) is kept as an unwired
+fallback. See `../PLAN.md` (Phase 4.5, Known issue 6) and
+`../DEMO-ENV.md` → "Router (Phase 4 …)".
+
+---
 
 ## Install
 

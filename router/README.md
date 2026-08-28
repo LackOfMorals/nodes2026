@@ -14,8 +14,10 @@ Subgraphs registered (Phase 4.1, verified live 2026-08-28):
   HTTP subgraph (`introspection.raw: true`). The Phase 4 experiment
   (Known issue 3 in `../PLAN.md`) **succeeded**: the router composes
   plain-GraphQL subgraphs, no wrapper plugin needed.
-- `neo4j` — the local `../neo4j-api` service (plain GraphQL over bolt,
-  `127.0.0.1:4400`), registered from its static schema file.
+- `neo4j` — the local `../neo4jGraphQLSrv` node server
+  (`@neo4j/graphql` 7.6.2 + Yoga, `127.0.0.1:4000/graphql`), registered
+  from a generated plain-SDL file (see Decisions below). The old
+  `../neo4j-api` Go service (:4400) is kept as an unwired fallback.
 
 MCP Gateway (Phase 4.2–4.4, verified live 2026-08-28): the router also
 serves a Model Context Protocol endpoint at `http://localhost:5025/mcp`
@@ -37,7 +39,8 @@ router/
 ├── config.json          # generated supergraph execution config (gitignored)
 ├── operations/          # MCP persisted operations (one named op per .graphql file)
 ├── release/router       # downloaded Cosmo Router binary (gitignored)
-├── Makefile             # render-graph / compose / build / start / neo4j-api
+├── Makefile             # render-graph / compose / build / start / neo4j-srv /
+│                        #   gen-neo4j-schema (compose depends on it)
 └── plugins/
     └── slack/           # the Slack Cosmo Connect plugin (Go)
 ```
@@ -70,15 +73,16 @@ router/
   output mentions `protoc version mismatch on host: found 36.0`.)
 - The repo-root `.env` holds every secret (`SLACK_BOT_TOKEN`,
   `LINEAR_API_KEY`, `NEO4J_URI/USER/PASSWORD/DATABASE`). `make start`
-  and `make neo4j-api` source it automatically; for manual runs use
-  `set -a; . ../.env; set +a`.
+  and `make neo4j-srv` source it automatically; for manual runs use
+  `set -a; . ../.env; set +a`. Fresh checkout only: the neo4j subgraph
+  server needs `cd neo4jGraphQLSrv && npm install` once.
 
 ## Build and run (two terminals)
 
 ```bash
-# terminal 1 — the Neo4j subgraph service (POST :4400/graphql)
+# terminal 1 — the Neo4j GraphQL library server (POST :4000/graphql)
 cd router
-make neo4j-api
+make neo4j-srv
 
 # terminal 2 — the router on :3010
 cd router
@@ -95,7 +99,7 @@ The router serves the three subgraphs in one supergraph; Linear calls go
 out to `api.linear.app` (auth via the `headers` block in `config.yaml`,
 which expands `${LINEAR_API_KEY}` from the environment — verified working
 in router 0.343.1), Slack calls go out to Slack's API, and neo4j calls go
-locally to `127.0.0.1:4400`.
+locally to `127.0.0.1:4000`.
 
 The Slack plugin's own workflow lives in `plugins/slack/`
 (`make generate | build | test` there), and its README documents the
@@ -113,6 +117,10 @@ bootstrap that actually worked, including the version pins below.
 | protoc | 29.3 | PATH (see Prerequisites) |
 | protoc-gen-go | v1.34.2 | PATH (`~/go/bin`) |
 | protoc-gen-go-grpc | v1.5.1 | PATH (`~/go/bin`) |
+| neo4jGraphQLSrv Node | 26.5.0 | host Node |
+| @neo4j/graphql | 7.6.2 | `neo4jGraphQLSrv/package.json` |
+| graphql-yoga | 5.22.0 | `neo4jGraphQLSrv/package.json` |
+| neo4j-driver | 5.28.3 | `neo4jGraphQLSrv/package.json` |
 
 go.sum in `plugins/slack/` locks the rest.
 
@@ -134,12 +142,16 @@ go.sum in `plugins/slack/` locks the rest.
   project (`1b3763ee-…`). Auth via the `config.yaml` `headers` rule —
   `${LINEAR_API_KEY}` env expansion works in router 0.343.1, and the key
   appears nowhere in the composed `config.json`.
-- **Neo4j**: `getIssueDiscussionContext(identifier: "NODES-1")` returns the
-  issue with its two discussion threads (channels, thread ts, confidence);
-  `searchMessages` returns hits with thread/channel/permalink.
+- **Neo4j** (re-verified 2026-08-28 after the switch to the
+  `@neo4j/graphql` server): `graphIssues(where: {identifier: {eq:
+  "NODES-1"}}, limit: 1)` returns the issue with `discussedInThreads`
+  (channel, ts) and `discussionDetails` (the `DISCUSSED_IN`
+  confidence/evidence per thread, correlated by `threadTs`);
+  `searchMessagesCI` returns case-insensitive hits with
+  author/channel/thread/permalink.
 - **Combined**: a single request touching all three subgraphs
-  (Linear `projects` + `slackChannel` + `getIssueDiscussionContext`)
-  returns everything in one response.
+  (Linear `projects` + `slackChannel` + `graphIssues` +
+  `searchMessagesCI`) returns everything in one response.
 
 **Phase 4.2–4.4 (2026-08-28):** MCP Gateway on `localhost:5025` —
 
@@ -174,3 +186,23 @@ go.sum in `plugins/slack/` locks the rest.
 - **Default wgc module path kept** (`github.com/wundergraph/cosmo/plugin`);
   the scaffold's fake `router-plugin v0.0.0` dependency was replaced by the
   real `v0.4.1` pseudo-version.
+- **Neo4j subgraph switched from the Go `neo4j-api/` service to the
+  `@neo4j/graphql` (Yoga) library server (2026-08-28).** The
+  hand-written typeDefs in `neo4jGraphQLSrv/schema.graphql` are the
+  single source of truth; `Issue`/`Project` were renamed
+  `GraphIssue`/`GraphProject` (`@node(labels:)` maps them back to the
+  graph labels) because the raw names collide with Linear's types when
+  wgc composes the supergraph — shared type names across subgraphs
+  hard-fail the composition. Two `@cypher` fields cover what the
+  generated schema can't express: `GraphIssue.discussionDetails` (the
+  `DISCUSSED_IN` confidence/evidence — load-bearing talk content) and
+  root `searchMessagesCI` (case-insensitive search; Neo4j 2026.x
+  `CONTAINS` is case-sensitive). `make gen-neo4j-schema` (via
+  `neo4jGraphQLSrv/gen-plain-schema.cjs`, `printSchema`) writes the
+  library's schema as plain SDL to the gitignored
+  `neo4jGraphQLSrv/neo4j-plain-schema.graphql` (printSchema strips the
+  `@cypher` directives), which `graph.yaml.template` registers via
+  `schema: {file: …}`; `compose` depends on `gen-neo4j-schema`. The Go
+  service (`neo4j-api/`, :4400) is kept as an unwired fallback. Both
+  graph operations (`get-issue-discussion-context`, `search-messages`)
+  were rewritten against the new field names; 31/31 MCP checks pass.

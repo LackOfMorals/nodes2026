@@ -1,13 +1,19 @@
 """
 Full discussion context for one issue, resolved entirely from the Neo4j
 knowledge graph in a single call: the issue itself (title, state,
-priority, creator, assignee, link to Linear) plus every Slack thread
+priority, creators, assignees, link to Linear) plus every Slack thread
 where the issue was discussed — with all messages in chronological
-order, author names and emails, and permalinks to Slack.
+order, author names and emails, and permalinks to Slack — plus the
+link evidence for each discussion thread.
 
 Use this first when asked about a specific issue: it needs no follow-up
 calls to Linear or Slack because the graph already has everything
-connected. Returns null when the identifier is not in the graph.
+connected. Returns an empty list when the identifier is not in the
+graph.
+
+discussionDetails carries the evidence for how each issue–thread link
+was made (correlate with discussedInThreads by threadTs): explicit
+mentions carry confidence 1.0 and evidence "explicit_mention".
 
 The demo graph contains six issues, NODES-1 through NODES-6.
 """
@@ -15,7 +21,7 @@ query GetIssueDiscussionContext(
   "The Linear issue identifier, e.g. NODES-1"
   $identifier: String!
 ) {
-  getIssueDiscussionContext(identifier: $identifier) {
+  graphIssues(where: { identifier: { eq: $identifier } }, limit: 1) {
     identifier
     title
     state
@@ -23,28 +29,38 @@ query GetIssueDiscussionContext(
     linearUrl
     createdAt
     updatedAt
-    createdBy {
+    peopleCreated {
       name
       email
     }
-    assignedTo {
+    peopleAssignedTo {
       name
       email
     }
-    discussions {
-      channel
-      threadTs
+    discussedInThreads(sort: [{ startedAt: ASC }]) {
+      ts
       startedAt
-      confidence
-      evidence
-      messages {
+      permalink
+      channelsHostsThread {
+        name
+      }
+      hasMessageMessages(sort: [{ ts: ASC }]) {
         ts
         postedAt
         text
-        authorName
-        authorEmail
         permalink
+        peopleAuthored {
+          name
+          email
+        }
       }
+    }
+    discussionDetails {
+      threadTs
+      threadPermalink
+      confidence
+      evidence
+      createdAt
     }
   }
 }

@@ -1,4 +1,4 @@
-type Channel @node {
+type Channel @node(labels: "Channel") {
 	hostsThreadThreads: [Thread!]! @relationship(type: "HOSTS_THREAD", direction: OUT)
 	id: String!
 	name: String!
@@ -11,22 +11,38 @@ type DiscussedInProperties @relationshipProperties {
 	evidence: String!
 }
 
-type Issue @node {
+type DiscussionDetail {
+	confidence: Float!
+	createdAt: DateTime!
+	evidence: String!
+	threadPermalink: String!
+	threadTs: String!
+}
+
+type GraphIssue @node(labels: "Issue") {
 	createdAt: DateTime!
 	discussedInThreads: [Thread!]! @relationship(type: "DISCUSSED_IN", direction: OUT, properties: "DiscussedInProperties")
+	discussionDetails: [DiscussionDetail!]! @cypher(
+		statement: """
+			MATCH (this:Issue)-[d:DISCUSSED_IN]->(t:Thread)
+			WITH t, d ORDER BY t.startedAt ASC
+			RETURN {threadTs: t.ts, threadPermalink: t.permalink, confidence: d.confidence, evidence: d.evidence, createdAt: d.createdAt} AS result
+		"""
+		columnName: "result"
+	)
 	id: String!
 	identifier: String!
 	linearUrl: String!
 	peopleAssignedTo: [Person!]! @relationship(type: "ASSIGNED_TO", direction: IN)
 	peopleCreated: [Person!]! @relationship(type: "CREATED", direction: IN)
 	priority: BigInt!
-	projectsHasIssue: [Project!]! @relationship(type: "HAS_ISSUE", direction: IN)
+	projectsHasIssue: [GraphProject!]! @relationship(type: "HAS_ISSUE", direction: IN)
 	state: String!
 	title: String!
 	updatedAt: DateTime!
 }
 
-type Message @node {
+type Message @node(labels: "Message") {
 	channelId: String!
 	peopleAuthored: [Person!]! @relationship(type: "AUTHORED", direction: IN)
 	permalink: String!
@@ -37,10 +53,10 @@ type Message @node {
 	ts: String!
 }
 
-type Person @node {
-	assignedToIssues: [Issue!]! @relationship(type: "ASSIGNED_TO", direction: OUT)
+type Person @node(labels: "Person") {
+	assignedToIssues: [GraphIssue!]! @relationship(type: "ASSIGNED_TO", direction: OUT)
 	authoredMessages: [Message!]! @relationship(type: "AUTHORED", direction: OUT)
-	createdIssues: [Issue!]! @relationship(type: "CREATED", direction: OUT)
+	createdIssues: [GraphIssue!]! @relationship(type: "CREATED", direction: OUT)
 	email: String!
 	id: String!
 	linearId: String
@@ -48,19 +64,32 @@ type Person @node {
 	slackId: String!
 }
 
-type Project @node {
-	hasIssueIssues: [Issue!]! @relationship(type: "HAS_ISSUE", direction: OUT)
+type GraphProject @node(labels: "Project") {
+	hasIssueIssues: [GraphIssue!]! @relationship(type: "HAS_ISSUE", direction: OUT)
 	id: String!
 	name: String!
 }
 
-type Thread @node {
+type Thread @node(labels: "Thread") {
 	channelId: String!
 	channelsHostsThread: [Channel!]! @relationship(type: "HOSTS_THREAD", direction: IN)
 	hasMessageMessages: [Message!]! @relationship(type: "HAS_MESSAGE", direction: OUT)
-	issuesDiscussedIn: [Issue!]! @relationship(type: "DISCUSSED_IN", direction: IN, properties: "DiscussedInProperties")
+	issuesDiscussedIn: [GraphIssue!]! @relationship(type: "DISCUSSED_IN", direction: IN, properties: "DiscussedInProperties")
 	messageCount: BigInt!
 	permalink: String!
 	startedAt: DateTime!
 	ts: String!
+}
+
+type Query {
+	searchMessagesCI(query: String!, limit: Int = 20): [Message!]! @cypher(
+		statement: """
+			MATCH (m:Message)
+			WHERE toLower(m.text) CONTAINS toLower($query)
+			WITH m ORDER BY m.postedAt DESC
+			LIMIT toInteger(coalesce($limit, 20))
+			RETURN m AS result
+		"""
+		columnName: "result"
+	)
 }

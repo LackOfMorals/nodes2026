@@ -1,4 +1,4 @@
-.PHONY: install-wgc install-tools build download start compose render-graph neo4j-api
+.PHONY: install-wgc install-tools build download start compose render-graph neo4j-api neo4j-srv gen-neo4j-schema
 
 # wgc's toolchain check is strict about protoc (must be 29-series; Homebrew
 # ships 36.0 and is rejected). Keep a pinned protoc in tools/ and put it
@@ -37,8 +37,19 @@ neo4j-api:
 	@set -a; . ../.env; set +a; cd ../neo4j-api \
 		&& go build -o bin/darwin_arm64 . && exec ./bin/darwin_arm64
 
-compose: render-graph install-tools install-wgc
+compose: render-graph install-tools install-wgc gen-neo4j-schema
 	$(WGC) wgc router compose -i graph.yaml -o config.json
+
+# Regenerate the plain-SDL file the router composes for the neo4j
+# subgraph from neo4jGraphQLSrv/schema.graphql (build artifact —
+# gitignored; single source of truth is the hand-written typeDefs).
+gen-neo4j-schema:
+	cd ../neo4jGraphQLSrv && node gen-plain-schema.cjs
+
+# Run the Neo4j GraphQL library server in the foreground (POST :4000/graphql).
+# First run in a fresh checkout: cd neo4jGraphQLSrv && npm install.
+neo4j-srv:
+	@set -a; . ../.env; set +a; cd ../neo4jGraphQLSrv && exec node index.cjs
 
 download: install-wgc
 	@if [ ! -f release/router ]; then \
