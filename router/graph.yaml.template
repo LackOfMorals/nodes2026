@@ -1,0 +1,26 @@
+# Template for router/graph.yaml — rendered by `make render-graph` (sed
+# from the repo-root .env). graph.yaml itself is gitignored because the
+# rendered copy contains the Linear API key (wgc 0.130.1 does no env
+# interpolation in graph.yaml).
+#
+# Three subgraphs:
+#   - slack  — Cosmo Connect plugin (in-process go-plugin)
+#   - linear — Linear's native GraphQL API (raw introspection)
+#   - neo4j  — the local neo4j-api service with a static schema file
+#              (no live introspection)
+version: 1
+subgraphs:
+  - plugin:
+      version: 0.0.1
+      path: plugins/slack
+  - name: linear
+    routing_url: https://api.linear.app/graphql
+    introspection:
+      url: https://api.linear.app/graphql
+      raw: true
+      headers:
+        Authorization: __LINEAR_API_KEY__
+  - name: neo4j
+    routing_url: http://127.0.0.1:4400/graphql
+    schema:
+      file: ../neo4j-api/schema.graphql

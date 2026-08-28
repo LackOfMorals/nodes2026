@@ -1,0 +1,50 @@
+"""
+Full discussion context for one issue, resolved entirely from the Neo4j
+knowledge graph in a single call: the issue itself (title, state,
+priority, creator, assignee, link to Linear) plus every Slack thread
+where the issue was discussed — with all messages in chronological
+order, author names and emails, and permalinks to Slack.
+
+Use this first when asked about a specific issue: it needs no follow-up
+calls to Linear or Slack because the graph already has everything
+connected. Returns null when the identifier is not in the graph.
+
+The demo graph contains six issues, NODES-1 through NODES-6.
+"""
+query GetIssueDiscussionContext(
+  "The Linear issue identifier, e.g. NODES-1"
+  $identifier: String!
+) {
+  getIssueDiscussionContext(identifier: $identifier) {
+    identifier
+    title
+    state
+    priority
+    linearUrl
+    createdAt
+    updatedAt
+    createdBy {
+      name
+      email
+    }
+    assignedTo {
+      name
+      email
+    }
+    discussions {
+      channel
+      threadTs
+      startedAt
+      confidence
+      evidence
+      messages {
+        ts
+        postedAt
+        text
+        authorName
+        authorEmail
+        permalink
+      }
+    }
+  }
+}

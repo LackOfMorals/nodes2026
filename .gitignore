@@ -1,0 +1,19 @@
+# Local credentials — never commit
+.env
+
+# Build artifacts
+sync/bin/
+
+# Local router artifacts (regenerable — see router/README.md)
+router/release/
+router/config.json
+# Rendered from router/graph.yaml.template — contains the Linear API key
+router/graph.yaml
+router/plugins/slack/bin/
+router/tools/
+
+# Local neo4j subgraph service binary (make neo4j-api / go build)
+neo4j-api/bin/
+
+# macOS
+.DS_Store

@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "service": "SlackService",
+  "operationMappings": [
+    {
+      "type": "OPERATION_TYPE_QUERY",
+      "original": "slackChannel",
+      "mapped": "QuerySlackChannel",
+      "request": "QuerySlackChannelRequest",
+      "response": "QuerySlackChannelResponse"
+    },
+    {
+      "type": "OPERATION_TYPE_QUERY",
+      "original": "slackMessages",
+      "mapped": "QuerySlackMessages",
+      "request": "QuerySlackMessagesRequest",
+      "response": "QuerySlackMessagesResponse"
+    },
+    {
+      "type": "OPERATION_TYPE_QUERY",
+      "original": "slackThread",
+      "mapped": "QuerySlackThread",
+      "request": "QuerySlackThreadRequest",
+      "response": "QuerySlackThreadResponse"
+    },
+    {
+      "type": "OPERATION_TYPE_QUERY",
+      "original": "slackUser",
+      "mapped": "QuerySlackUser",
+      "request": "QuerySlackUserRequest",
+      "response": "QuerySlackUserResponse"
+    }
+  ],
+  "typeFieldMappings": [
+    {
+      "type": "Query",
+      "fieldMappings": [
+        {
+          "original": "slackChannel",
+          "mapped": "slack_channel",
+          "argumentMappings": [
+            {
+              "original": "id",
+              "mapped": "id"
+            }
+          ]
+        },
+        {
+          "original": "slackMessages",
+          "mapped": "slack_messages",
+          "argumentMappings": [
+            {
+              "original": "channelId",
+              "mapped": "channel_id"
+            },
+            {
+              "original": "limit",
+              "mapped": "limit"
+            }
+          ]
+        },
+        {
+          "original": "slackThread",
+          "mapped": "slack_thread",
+          "argumentMappings": [
+            {
+              "original": "channelId",
+              "mapped": "channel_id"
+            },
+            {
+              "original": "threadTs",
+              "mapped": "thread_ts"
+            }
+          ]
+        },
+        {
+          "original": "slackUser",
+          "mapped": "slack_user",
+          "argumentMappings": [
+            {
+              "original": "id",
+              "mapped": "id"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "SlackChannel",
+      "fieldMappings": [
+        {
+          "original": "id",
+          "mapped": "id"
+        },
+        {
+          "original": "name",
+          "mapped": "name"
+        },
+        {
+          "original": "topic",
+          "mapped": "topic"
+        },
+        {
+          "original": "purpose",
+          "mapped": "purpose"
+        },
+        {
+          "original": "memberCount",
+          "mapped": "member_count"
+        },
+        {
+          "original": "isPrivate",
+          "mapped": "is_private"
+        }
+      ]
+    },
+    {
+      "type": "SlackMessage",
+      "fieldMappings": [
+        {
+          "original": "channelId",
+          "mapped": "channel_id"
+        },
+        {
+          "original": "ts",
+          "mapped": "ts"
+        },
+        {
+          "original": "userId",
+          "mapped": "user_id"
+        },
+        {
+          "original": "text",
+          "mapped": "text"
+        },
+        {
+          "original": "threadTs",
+          "mapped": "thread_ts"
+        },
+        {
+          "original": "permalink",
+          "mapped": "permalink"
+        }
+      ]
+    },
+    {
+      "type": "SlackUser",
+      "fieldMappings": [
+        {
+          "original": "id",
+          "mapped": "id"
+        },
+        {
+          "original": "name",
+          "mapped": "name"
+        },
+        {
+          "original": "realName",
+          "mapped": "real_name"
+        },
+        {
+          "original": "email",
+          "mapped": "email"
+        },
+        {
+          "original": "isBot",
+          "mapped": "is_bot"
+        }
+      ]
+    }
+  ]
+}

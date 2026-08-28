@@ -1,0 +1,92 @@
+syntax = "proto3";
+package service;
+
+option go_package = "github.com/wundergraph/cosmo/plugin";
+
+import "google/protobuf/wrappers.proto";
+
+// Service definition for SlackService
+service SlackService {
+  // Look up a Slack channel by ID.
+  rpc QuerySlackChannel(QuerySlackChannelRequest) returns (QuerySlackChannelResponse) {}
+  // Recent messages from a channel. Up to 100 per call.
+  rpc QuerySlackMessages(QuerySlackMessagesRequest) returns (QuerySlackMessagesResponse) {}
+  // Full reply chain for a thread, given the parent message ts.
+  rpc QuerySlackThread(QuerySlackThreadRequest) returns (QuerySlackThreadResponse) {}
+  // Resolve a Slack user ID to user details.
+  rpc QuerySlackUser(QuerySlackUserRequest) returns (QuerySlackUserResponse) {}
+}
+
+// Request message for slackChannel operation: Look up a Slack channel by ID..
+message QuerySlackChannelRequest {
+  string id = 1;
+}
+// Response message for slackChannel operation: Look up a Slack channel by ID..
+message QuerySlackChannelResponse {
+  // Look up a Slack channel by ID.
+  SlackChannel slack_channel = 1;
+}
+// Request message for slackMessages operation: Recent messages from a channel. Up to 100 per call..
+message QuerySlackMessagesRequest {
+  string channel_id = 1;
+  google.protobuf.Int32Value limit = 2;
+}
+// Response message for slackMessages operation: Recent messages from a channel. Up to 100 per call..
+message QuerySlackMessagesResponse {
+  // Recent messages from a channel. Up to 100 per call.
+  repeated SlackMessage slack_messages = 1;
+}
+// Request message for slackThread operation: Full reply chain for a thread, given the parent message ts..
+message QuerySlackThreadRequest {
+  string channel_id = 1;
+  string thread_ts = 2;
+}
+// Response message for slackThread operation: Full reply chain for a thread, given the parent message ts..
+message QuerySlackThreadResponse {
+  // Full reply chain for a thread, given the parent message ts.
+  repeated SlackMessage slack_thread = 1;
+}
+// Request message for slackUser operation: Resolve a Slack user ID to user details..
+message QuerySlackUserRequest {
+  string id = 1;
+}
+// Response message for slackUser operation: Resolve a Slack user ID to user details..
+message QuerySlackUserResponse {
+  // Resolve a Slack user ID to user details.
+  SlackUser slack_user = 1;
+}
+
+// A Slack channel.
+message SlackChannel {
+  string id = 1;
+  string name = 2;
+  google.protobuf.StringValue topic = 3;
+  google.protobuf.StringValue purpose = 4;
+  google.protobuf.Int32Value member_count = 5;
+  bool is_private = 6;
+}
+
+// A Slack message. Messages are uniquely identified by (channelId, ts).
+message SlackMessage {
+  // The channel the message lives in.
+  string channel_id = 1;
+  // Slack message timestamp — the unique identifier within a channel.
+  string ts = 2;
+  // The Slack user ID of the author. Resolve via slackUser to get details.
+  string user_id = 3;
+  // Message text. Slack-flavoured markdown.
+  string text = 4;
+  // If this message is a reply, the ts of the parent message.
+  google.protobuf.StringValue thread_ts = 5;
+  // Permalink to the message in the Slack web app.
+  google.protobuf.StringValue permalink = 6;
+}
+
+// A Slack workspace user.
+message SlackUser {
+  string id = 1;
+  string name = 2;
+  google.protobuf.StringValue real_name = 3;
+  google.protobuf.StringValue email = 4;
+  bool is_bot = 5;
+}

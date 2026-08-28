@@ -1,0 +1,30 @@
+"""
+List the issues in the demo's Linear project "NODES 2026 Demo" directly
+from the live Linear API (not from the knowledge graph): identifier,
+title, current state, priority, assignee, and a link to Linear.
+
+Use this when asked about the current state of the real Linear issues in
+the demo workspace (identifiers NEO-10 through NEO-15). It exists to
+show that the same single MCP endpoint reaches the live Linear API as
+well as the knowledge graph.
+"""
+query LinearProjectIssues {
+  project(id: "1b3763ee-c856-4727-bc80-bf1ae5d0794b") {
+    name
+    issues {
+      nodes {
+        id
+        identifier
+        title
+        state {
+          name
+        }
+        priority
+        assignee {
+          name
+        }
+        url
+      }
+    }
+  }
+}

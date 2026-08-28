@@ -1,0 +1,151 @@
+{
+  "version": "1.0.0",
+  "messages": {
+    "Query": {
+      "fields": {
+        "slackChannel": 2,
+        "slackMessages": 3,
+        "slackThread": 4,
+        "slackUser": 6
+      },
+      "reservedNumbers": [
+        1,
+        5
+      ]
+    },
+    "QueryHelloRequest": {
+      "fields": {
+        "name": 1
+      }
+    },
+    "QueryHello": {
+      "fields": {
+        "name": 1
+      }
+    },
+    "QueryHelloResponse": {
+      "fields": {
+        "hello": 1
+      }
+    },
+    "World": {
+      "fields": {
+        "id": 1,
+        "name": 2
+      }
+    },
+    "QuerySlackChannelRequest": {
+      "fields": {
+        "id": 1
+      }
+    },
+    "QuerySlackChannel": {
+      "fields": {
+        "id": 1
+      }
+    },
+    "QuerySlackChannelResponse": {
+      "fields": {
+        "slack_channel": 1
+      }
+    },
+    "QuerySlackMessagesRequest": {
+      "fields": {
+        "channel_id": 1,
+        "limit": 2
+      }
+    },
+    "QuerySlackMessages": {
+      "fields": {
+        "channelId": 1,
+        "limit": 2
+      }
+    },
+    "QuerySlackMessagesResponse": {
+      "fields": {
+        "slack_messages": 1
+      }
+    },
+    "QuerySlackThreadRequest": {
+      "fields": {
+        "channel_id": 1,
+        "thread_ts": 2
+      }
+    },
+    "QuerySlackThread": {
+      "fields": {
+        "channelId": 1,
+        "threadTs": 2
+      }
+    },
+    "QuerySlackThreadResponse": {
+      "fields": {
+        "slack_thread": 1
+      }
+    },
+    "QuerySearchSlackMessagesRequest": {
+      "fields": {
+        "query": 1,
+        "channel_id": 2,
+        "limit": 3
+      }
+    },
+    "QuerySearchSlackMessages": {
+      "fields": {
+        "query": 1,
+        "channelId": 2,
+        "limit": 3
+      }
+    },
+    "QuerySearchSlackMessagesResponse": {
+      "fields": {
+        "search_slack_messages": 1
+      }
+    },
+    "QuerySlackUserRequest": {
+      "fields": {
+        "id": 1
+      }
+    },
+    "QuerySlackUser": {
+      "fields": {
+        "id": 1
+      }
+    },
+    "QuerySlackUserResponse": {
+      "fields": {
+        "slack_user": 1
+      }
+    },
+    "SlackChannel": {
+      "fields": {
+        "id": 1,
+        "name": 2,
+        "topic": 3,
+        "purpose": 4,
+        "memberCount": 5,
+        "isPrivate": 6
+      }
+    },
+    "SlackMessage": {
+      "fields": {
+        "channelId": 1,
+        "ts": 2,
+        "userId": 3,
+        "text": 4,
+        "threadTs": 5,
+        "permalink": 6
+      }
+    },
+    "SlackUser": {
+      "fields": {
+        "id": 1,
+        "name": 2,
+        "realName": 3,
+        "email": 4,
+        "isBot": 5
+      }
+    }
+  },
+  "enums": {}
+}

@@ -1,0 +1,69 @@
+# Slack subgraph schema for the Cosmo Connect plugin.
+#
+# This declares the slice of Slack exposed through the router's GraphQL
+# endpoint. `wgc router plugin generate` compiles it into the protobuf
+# contract in ../generated/.
+#
+# NOTE: no federation directives (@key / @shareable). Cosmo Connect
+# plugins serve plain GraphQL over the in-process gRPC contract — the
+# router does not run federation introspection against them. Federation
+# only becomes a question when registering raw HTTP subgraphs (Linear,
+# Neo4j) in the Phase 4 router config.
+#
+# Scoping note: this subgraph does NOT enforce channel scoping. Scoping is
+# enforced at the gateway via persisted operations. The plugin is happy to
+# query any channel the bot token has access to.
+
+type Query {
+  """Look up a Slack channel by ID."""
+  slackChannel(id: ID!): SlackChannel
+
+  """Recent messages from a channel. Up to 100 per call."""
+  slackMessages(channelId: ID!, limit: Int = 50): [SlackMessage!]!
+
+  """Full reply chain for a thread, given the parent message ts."""
+  slackThread(channelId: ID!, threadTs: String!): [SlackMessage!]!
+
+  """Resolve a Slack user ID to user details."""
+  slackUser(id: ID!): SlackUser
+}
+
+"""A Slack channel."""
+type SlackChannel {
+  id: ID!
+  name: String!
+  topic: String
+  purpose: String
+  memberCount: Int
+  isPrivate: Boolean!
+}
+
+"""A Slack message. Messages are uniquely identified by (channelId, ts)."""
+type SlackMessage {
+  """The channel the message lives in."""
+  channelId: ID!
+
+  """Slack message timestamp — the unique identifier within a channel."""
+  ts: String!
+
+  """The Slack user ID of the author. Resolve via slackUser to get details."""
+  userId: ID!
+
+  """Message text. Slack-flavoured markdown."""
+  text: String!
+
+  """If this message is a reply, the ts of the parent message."""
+  threadTs: String
+
+  """Permalink to the message in the Slack web app."""
+  permalink: String
+}
+
+"""A Slack workspace user."""
+type SlackUser {
+  id: ID!
+  name: String!
+  realName: String
+  email: String
+  isBot: Boolean!
+}

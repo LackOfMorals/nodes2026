@@ -1,0 +1,27 @@
+"""
+Case-insensitive substring search across all Slack discussion messages
+stored in the Neo4j knowledge graph. Each hit carries the message text,
+its author, the Slack channel it lives in, the thread it belongs to,
+and a permalink.
+
+This is the only message-search surface in the demo: Slack's own
+search API only works with user tokens, so without the knowledge graph
+there is no way to search the discussions at all.
+"""
+query SearchMessages(
+  "Substring to look for in message text (case-insensitive)"
+  $query: String!
+  "Maximum number of hits to return"
+  $limit: Int = 20
+) {
+  searchMessages(query: $query, limit: $limit) {
+    ts
+    postedAt
+    text
+    authorName
+    authorEmail
+    permalink
+    threadTs
+    channel
+  }
+}

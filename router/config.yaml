@@ -1,0 +1,53 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/wundergraph/cosmo/main/router/pkg/config/config.schema.json
+
+version: "1"
+
+listen_addr: localhost:3010
+
+dev_mode: true
+
+execution_config:
+  file:
+    path: config.json
+
+plugins:
+  enabled: true
+  path: plugins
+
+# Outbound header rules: Linear authenticates with a raw API key in the
+# Authorization header (no "Bearer " prefix — that is what the Linear
+# API expects; the key is rendered in at compose time from .env too, see
+# graph.yaml.template). ${LINEAR_API_KEY} is expanded from the process
+# environment (make start sources ../.env).
+headers:
+  subgraphs:
+    linear:
+      request:
+        - op: "set"
+          name: "Authorization"
+          value: "${LINEAR_API_KEY}"
+
+# MCP (Model Context Protocol) server: exposes a small, curated set of
+# persisted GraphQL operations as tools for AI agents on localhost:5025.
+# Only operations loaded from the file-system provider below are exposed
+# (ad-hoc query execution is NOT enabled for MCP clients).
+# omit_tool_name_prefix: true means tool names are the plain snake_case of
+# the operation names (get_issue_discussion_context, search_messages, ...).
+mcp:
+  enabled: true
+  server:
+    listen_addr: localhost:5025
+  storage:
+    provider_id: mcp
+  exclude_mutations: true
+  enable_arbitrary_operations: false
+  expose_schema: false
+  omit_tool_name_prefix: true
+  graph_name: nodes2026
+
+storage_providers:
+  file_system:
+    - id: mcp
+      # Relative to the router's working directory (router/ is started from
+      # its own folder). One named operation per .graphql file.
+      path: operations

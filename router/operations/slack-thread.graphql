@@ -1,0 +1,26 @@
+"""
+Read one Slack thread live from the real Slack workspace: every message
+in the thread (ts, text, permalink back into Slack).
+
+Pass the channel ID and the ts of the thread's first message (threadTs).
+The demo channel is #nodes-demo-eng, channel ID C0BSX7Q9M0E. Its four
+seeded threads are:
+  1787845145.093149 — federation gateway / nullability (NEO-10)
+  1787845177.141579 — demo pre-mortem
+  1787845201.547149 — OAuth token refresh (NEO-12)
+  1787845220.346049 — schema onboarding (names no issue)
+Returns an empty list if the thread is not found in the channel.
+"""
+query SlackThread(
+  "The Slack channel ID (C0BSX7Q9M0E for the demo channel #nodes-demo-eng)"
+  $channelId: ID!
+  "The Slack ts of the thread's first message, e.g. 1787845145.093149"
+  $threadTs: String!
+) {
+  slackThread(channelId: $channelId, threadTs: $threadTs) {
+    ts
+    text
+    threadTs
+    permalink
+  }
+}
